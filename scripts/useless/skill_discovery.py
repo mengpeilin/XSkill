@@ -7,24 +7,21 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 import wandb
 from xskill.dataset.dataset import ConcatDataset
 from xskill.utility.transform import get_transform_pipeline
+from lightning.pytorch import seed_everything
 
 
 @hydra.main(version_base=None,
-            config_path="../../config/realworld",
+            config_path="../config/simulation/",
             config_name="skill_discovery")
 def pretrain(cfg: DictConfig):
     output_dir = HydraConfig.get().runtime.output_dir
     print(f"output_dir: {output_dir}")
     pretrain_pipeline = get_transform_pipeline(cfg.augmentations)
 
+    seed_everything(cfg.seed, workers=True)
     robot_dataset = hydra.utils.instantiate(cfg.robot_dataset)
     human_dataset = hydra.utils.instantiate(cfg.human_dataset)
-    combine_mode = "max" if cfg.get("repeat_shorter_dataset", False) else "min"
-    combine_dataset = ConcatDataset(robot_dataset, human_dataset, mode=combine_mode)
-
-    print("robot dataset len:", len(robot_dataset))
-    print("human dataset len:", len(human_dataset))
-    print("combine mode:", combine_mode)
+    combine_dataset = ConcatDataset(robot_dataset, human_dataset)
 
     dataloader = torch.utils.data.DataLoader(
         combine_dataset,
@@ -44,7 +41,7 @@ def pretrain(cfg: DictConfig):
     )
 
     print("dataset len: ", len(combine_dataset))
-    print(combine_dataset[0][0].im_q.shape)
+    print(combine_dataset[1][0].im_q.shape)
 
     checkpoint_callback = ModelCheckpoint(
         every_n_epochs=cfg.callback.every_n_epoch,
@@ -54,7 +51,7 @@ def pretrain(cfg: DictConfig):
     )
 
     # Set up logger
-    wandb.init(project="Real_kitchen_prototype_learning")
+    wandb.init(project="kitchen_prototype_learning")
     # wandb_logger = WandbLogger(project="visual_skill_prior")
     wandb.config.update(OmegaConf.to_container(cfg))
     trainer = pl.Trainer(
@@ -62,6 +59,7 @@ def pretrain(cfg: DictConfig):
         callbacks=[checkpoint_callback],
         enable_checkpointing=True,
         default_root_dir=output_dir,
+        deterministic=True,
         **cfg.Trainer,
     )
 

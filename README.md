@@ -42,12 +42,26 @@ To set up the simulation dataset:
     ```
 
 ## 🌐 Real World Dataset
-To Download the real world kitchen dataset:
+
+The real-world pipeline now uses zarr files end to end.
+
+1. Create a human demo zarr from one or more Hugging Face LeRobot datasets:
    ```bash
-   mkdir datasets
-   cd datasets
-   wget https://xskill.cs.columbia.edu/data/real_kitchen_data.zip
+   python scripts/convert_lerobot_dataset.py \
+     --dataset xiaochyVera/pick_red_mug_human_ss \
+     --output-root data/processed/pick_red_mug \
+     --output-split human
    ```
+2. Create a robot demo zarr from recorded robot episode folders:
+   ```bash
+   python scripts/convert_robot_video_dataset.py \
+     --input-dir data/robot/pick_place_red_mug_100 \
+     --output-root data/processed/pick_red_mug \
+     --output-split robot
+   ```
+
+The robot zarr stores `camera_cam1`, `camera_wrist_cam`, `obs`, and `actions`.
+The `obs` and `actions` arrays are always `xyz + rotvec + gripper_width`.
 ## 🚴‍♂️ Training
 
 ### Simulation
@@ -74,9 +88,18 @@ To Download the real world kitchen dataset:
     ```bash
     python scripts/realworld/label_real_kitchen_dataset.py
     ``` 
-3. 📊 Visualization
-
-    Open the provided Jupyter notebook `viz_real.ipynb` to visualize the learned prototypes:
+3. Train the real-world BC policy:
+   ```bash
+   python scripts/realworld/skill_transfer_composing.py
+   ```
+4. Run inference with a labelled human prototype zarr episode:
+   ```bash
+   python xskill_server.py \
+     --ckpt_path /path/to/ckpt_299.pt \
+     --proto_path /path/to/human_encode_protos/ckpt_499/human.zarr \
+     --demo_episode 0
+   ```
+5. Open `viz_real.ipynb` to visualize the learned prototypes.
 
 ### BibTeX
    ```bash

@@ -1,9 +1,8 @@
-base_dev_dir: null
+base_dev_dir: /data/peilin/xskill
 
 hydra:
   run:
-    dir: '${base_dev_dir}/xskill/experiment/pretrain/${now:%Y-%m-%d_%H-%M-%S}'
-
+    dir: '${base_dev_dir}/experiment/pretrain_pick_mug/${now:%Y-%m-%d_%H-%M-%S}'
 
 batch_size: 20
 num_workers: 4
@@ -11,19 +10,15 @@ pin_memory: False
 persistent_workers: False
 drop_last: True
 
-# resize_shape: [320,240]
-resize_shape: [160,120]
+resize_shape: [160, 120]
+repeat_shorter_dataset: True
+
 robot_dataset:
   _target_: xskill.dataset.real_world_pretrain_dataset.RealWorldEpisodeTrajDataset
-  _allowed_dirs: [
-    '${base_dev_dir}/xskill/datasets/realworld_kitchen_dataset/data_v2/draw_cloth_light',
-    '${base_dev_dir}/xskill/datasets/realworld_kitchen_dataset/data_v2/draw_light_cloth',
-    '${base_dev_dir}/xskill/datasets/realworld_kitchen_dataset/data_v2/draw_light_oven',
-    '${base_dev_dir}/xskill/datasets/realworld_kitchen_dataset/data_v2/light_cloth_oven',
-    '${base_dev_dir}/xskill/datasets/realworld_kitchen_dataset/data_v2/light_draw_cloth',
-    '${base_dev_dir}/xskill/datasets/realworld_kitchen_dataset/data_v2/light_oven_draw',
-    '${base_dev_dir}/xskill/datasets/realworld_kitchen_dataset/data_v2/oven_light_cloth',
-  ]
+  dataset_paths:
+    - '${base_dev_dir}/data/processed/pick_red_mug/robot.zarr'
+  mask: null
+  camera_view: cam1
   frame_sampler:
     _target_: xskill.dataset.frame_samplers.ZarrFrequencyUniformSampler
     offset: 0
@@ -35,39 +30,31 @@ robot_dataset:
 
 human_dataset:
   _target_: xskill.dataset.real_world_pretrain_dataset.RealWorldEpisodeTrajDataset
-  _allowed_dirs: [
-    '${base_dev_dir}/xskill/datasets/realworld_kitchen_dataset/data_v2/human_cloth_light_oven',
-    '${base_dev_dir}/xskill/datasets/realworld_kitchen_dataset/data_v2/human_cloth_oven_light',
-    '${base_dev_dir}/xskill/datasets/realworld_kitchen_dataset/data_v2/human_draw_cloth_light',
-    '${base_dev_dir}/xskill/datasets/realworld_kitchen_dataset/data_v2/human_draw_light_oven',
-    '${base_dev_dir}/xskill/datasets/realworld_kitchen_dataset/data_v2/human_draw_light_cloth',
-    '${base_dev_dir}/xskill/datasets/realworld_kitchen_dataset/data_v2/human_light_cloth_oven',
-    '${base_dev_dir}/xskill/datasets/realworld_kitchen_dataset/data_v2/human_oven_draw_cloth',
-
-  ]
+  dataset_paths:
+    - '${base_dev_dir}/data/processed/pick_red_mug/human.zarr'
+  mask: null
+  camera_view: cam1
   frame_sampler:
     _target_: xskill.dataset.frame_samplers.ZarrFrequencyUniformSampler
     offset: 0
     num_frames: ${robot_dataset.frame_sampler.num_frames}
     frequency: ${robot_dataset.frame_sampler.frequency}
-  slide: 8
+  slide: ${robot_dataset.slide}
   max_get_threads: ${robot_dataset.max_get_threads}
   resize_shape: ${resize_shape}
 
-
-augmentations: ['random_crop_110_146','grayscale','gaussian_blur','normalize']
-
+augmentations: ['random_crop_110_146', 'grayscale', 'gaussian_blur', 'normalize']
 
 Trainer:
-  accelerator: "gpu"
+  accelerator: gpu
   devices: [0]
-  max_epochs: 300
+  max_epochs: 500
   enable_progress_bar: False
   log_every_n_steps: 100
 
 n_layer: 8
 
-Model: 
+Model:
   _target_: xskill.model.core.Model
   dim: 32
   T: 0.1
@@ -88,38 +75,30 @@ Model:
   use_temperature_scheduler: False
   positive_window: 6
   negative_window: 18
-
-
-  skill_prior: 
+  skill_prior:
     _target_: xskill.model.encoder.VisualMotionPrior
     out_size: 128
     vision_only: True
     vision_encoder:
       _target_: xskill.model.encoder.CNN_v3
       out_size: ${Model.skill_prior.out_size}
-    
-
     nmb_prototypes: ${Model.dim}
     normalize: False
-
-
   encoder_q:
     _target_: xskill.model.encoder.VisualMotionEncoder
     vision_only: True
-    state_size: 256 # Final per state encoding dim
-    out_size: 256 # Final rep dim from temporal transformer
+    state_size: 256
+    out_size: 256
     vision_encoder:
       _target_: xskill.model.encoder.CNN_v3
       out_size: ${Model.encoder_q.state_size}
-
     nmb_prototypes: ${Model.dim}
     normalize: True
     start_end: True
     goal_condition: False
-
     temporal_transformer_encoder:
       _target_: xskill.model.transformer.TorchTransformerEncoder
-      query_dim: ${Model.encoder_q.state_size} 
+      query_dim: ${Model.encoder_q.state_size}
       heads: 4
       dim_feedforward: 512
       n_layer: ${n_layer}
@@ -129,15 +108,8 @@ Model:
       pos_encoder:
         _target_: xskill.model.transformer.PositionalEncoding
         size: ${Model.encoder_q.state_size}
-        max_len: 10 
+        max_len: 10
         frequency: 10
-
-
-
 
 callback:
   every_n_epoch: 10
-
-
-
-

@@ -140,9 +140,15 @@ class Model(pl.LightningModule):
             (self.trainer.max_epochs / 2) * self.trainer.current_epoch)
 
     def training_step(self, batch, batch_idx):
-        robot_batch, human_batch = batch
-        self.training_step_helper(robot_batch, batch_idx)
-        self.training_step_helper(human_batch, batch_idx)
+        if hasattr(batch, "im_q"):
+            batches = (batch,)
+        elif isinstance(batch, (list, tuple)) and all(hasattr(item, "im_q") for item in batch):
+            batches = tuple(batch)
+        else:
+            raise TypeError("Unsupported training batch format.")
+
+        for dataset_batch in batches:
+            self.training_step_helper(dataset_batch, batch_idx)
 
     # @profile
     def training_step_helper(self, batch, batch_idx):

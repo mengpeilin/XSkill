@@ -1,0 +1,100 @@
+base_dev_dir: /data/peilin/xskill
+hydra.job.config.save_dir: null
+
+save_dir: '${base_dev_dir}/experiment/diffusion_bc_realworld/pick_red_mug_2cam'
+project_name: 'realworld_pick_red_mug_diffusion_bc_2cam'
+device: 'cuda:0'
+
+num_epochs: 300
+lr: 1e-4
+weight_decay: 1e-6
+ckpt_frequency: 10
+
+seed: 43
+
+pred_horizon: 16
+obs_horizon: 1
+action_horizon: 8
+proto_horizon: 1
+
+batch_size: 64
+num_workers: 8
+pin_memory: True
+persistent_workers: True
+
+obs_dim: 7
+action_dim: 7
+proto_dim: 256
+vision_feature_dim: 64
+bc_resize: [320, 240]
+train_augmentations: ['random_crop_260_288', 'normalize']
+inference_augmentations: ['center_crop_260_288', 'normalize']
+
+pretrain_path: '${base_dev_dir}/experiment/pretrain_pick_mug/2026-05-07_00-02-40'
+pretrain_ckpt: 499
+
+raw_representation: True
+prototype: False
+softmax_prototype: False
+one_hot_prototype: False
+upsample_proto: False
+
+dataset:
+  _target_: xskill.dataset.diffusion_bc_dataset.KitchenBCDataset
+  resize_shape: ${bc_resize}
+  data_dirs:
+    - '${base_dev_dir}/data/processed/pick_red_mug/robot'
+  proto_dirs:
+    - '${pretrain_path}/encode_protos/ckpt_${pretrain_ckpt}'
+  pred_horizon: ${pred_horizon}
+  obs_horizon: ${obs_horizon}
+  action_horizon: ${action_horizon}
+  proto_horizon: ${proto_horizon}
+  raw_representation: ${raw_representation}
+  softmax_prototype: ${softmax_prototype}
+  prototype: ${prototype}
+  one_hot_prototype: ${one_hot_prototype}
+  prototype_snap: True
+  snap_frames: 100
+  mask:
+    - '${base_dev_dir}/data/processed/pick_red_mug/robot_mask_40.json'
+  obs_image_based: True
+  camera_views: ['.', 'wrist_cam']
+  pipeline: ${train_augmentations}
+  unnormal_list: ['proto_snap', 'protos']
+  verbose: True
+  seed: ${seed}
+
+upsample_proto_net:
+  _target_: xskill.model.network.Mlp
+  in_size: ${proto_dim}
+  out_size: 256
+  net_arch: []
+
+proto_pred_net:
+  _target_: xskill.model.transformer.TorchTransformerProtoPredictor
+  query_dim: ${proto_dim}
+  heads: 4
+  dim_feedforward: 512
+  n_layer: 16
+  proto_dim: ${proto_dim}
+  use_encoder: True
+  input_dim: null
+  pos_encoder:
+    _target_: xskill.model.transformer.PositionalEncoding
+    size: ${proto_dim}
+    max_len: 200
+    frequency: 10000
+
+num_diffusion_iters: 60
+noise_pred_net:
+  _target_: xskill.model.diffusion_model.ConditionalUnet1D
+  input_dim: ${action_dim}
+  global_cond_dim: null
+
+noise_scheduler:
+  _target_: diffusers.schedulers.scheduling_ddpm.DDPMScheduler
+  num_train_timesteps: ${num_diffusion_iters}
+  beta_schedule: 'squaredcos_cap_v2'
+  clip_sample: True
+  prediction_type: 'epsilon'

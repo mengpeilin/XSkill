@@ -128,6 +128,10 @@ def unique_counts(counts):
     return sorted({int(count) for count in counts})
 
 
+def task_relative_path(task_dir, path):
+    return str(path.relative_to(task_dir))
+
+
 def build_human_sources(task_name, task_spec, cache_dir):
     prepared_sources = []
     for source_spec in task_spec["human_sources"]:
@@ -188,7 +192,6 @@ def convert_human_zarr(task_name, prepared_sources, output_path, overwrite):
             )
             if not video_path.is_file():
                 raise FileNotFoundError(f"Missing human demo video {video_path}")
-            breakpoint()
             replay_buffer.add_episode({"camera_cam1": decode_human_video(video_path)}, compressors="disk")
             manifest_entries.append({"dataset": dataset_name, "source_episode": int(episode_index)})
 
@@ -232,7 +235,6 @@ def convert_robot_zarr(task_name, episode_dirs, output_path, overwrite):
             action_key="action_ee",
             gripper_width_key="gripper_width",
         )
-        breakpoint()
         replay_buffer.add_episode(
             {
                 "obs": obs,
@@ -283,7 +285,7 @@ def write_masks(task_name, task_dir, split_name, total_episodes, requested_count
         mask_path = task_dir / f"{split_name}_mask_{count}.json"
         with open(mask_path, "w") as file:
             json.dump(mask_payload, file)
-        written_paths[count] = str(mask_path)
+        written_paths[count] = mask_path
         print(f"[{task_name}] wrote {mask_path}")
     return written_paths, selections, unavailable
 
@@ -367,12 +369,20 @@ def run_task(task_name, task_spec, args, output_root):
 
     available_human_counts = [count for count in human_counts if count in human_mask_paths]
     available_robot_counts = [count for count in robot_counts if count in robot_mask_paths]
+    manifest_human_masks = {
+        count: task_relative_path(task_dir, path)
+        for count, path in human_mask_paths.items()
+    }
+    manifest_robot_masks = {
+        count: task_relative_path(task_dir, path)
+        for count, path in robot_mask_paths.items()
+    }
     training_grid = [
         {
             "human_demos": human_count,
             "robot_demos": robot_count,
-            "human_mask": human_mask_paths[human_count],
-            "robot_mask": robot_mask_paths[robot_count],
+            "human_mask": manifest_human_masks[human_count],
+            "robot_mask": manifest_robot_masks[robot_count],
         }
         for human_count in available_human_counts
         for robot_count in available_robot_counts
@@ -381,16 +391,16 @@ def run_task(task_name, task_spec, args, output_root):
     manifest = {
         "task": task_name,
         "robot_input_dir": str(robot_input_dir),
-        "human_zarr": str(human_zarr_path),
-        "robot_zarr": str(robot_zarr_path),
+        "human_zarr": task_relative_path(task_dir, human_zarr_path),
+        "robot_zarr": task_relative_path(task_dir, robot_zarr_path),
         "human_total": human_total,
         "robot_total": robot_total,
         "requested_human_counts": human_counts,
         "requested_robot_counts": robot_counts,
         "unavailable_human_counts": unavailable_human_counts,
         "unavailable_robot_counts": unavailable_robot_counts,
-        "human_masks": human_mask_paths,
-        "robot_masks": robot_mask_paths,
+        "human_masks": manifest_human_masks,
+        "robot_masks": manifest_robot_masks,
         "human_selected_positions": human_selected,
         "robot_selected_positions": robot_selected,
         "training_grid": training_grid,

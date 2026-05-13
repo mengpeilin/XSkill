@@ -140,6 +140,18 @@ def load_manifest(manifest_root: Path, task: str) -> dict:
     return read_json(manifest_path)
 
 
+def resolve_task_path(task_dir: Path, raw_path: str) -> Path:
+    path = Path(raw_path)
+    if path.is_absolute():
+        if path.exists():
+            return path
+        fallback = task_dir / path.name
+        if fallback.exists():
+            return fallback
+        return path
+    return task_dir / path
+
+
 def build_jobs(args: argparse.Namespace) -> tuple[list[Job], list[dict]]:
     requested_human_counts = sorted({int(count) for count in args.human_counts})
     requested_robot_counts = sorted({int(count) for count in args.robot_counts})
@@ -148,13 +160,14 @@ def build_jobs(args: argparse.Namespace) -> tuple[list[Job], list[dict]]:
 
     for task in selected_tasks(args):
         manifest = load_manifest(args.manifest_root, task)
+        task_dir = args.manifest_root / task
         grid = {
             (int(entry["human_demos"]), int(entry["robot_demos"])): entry
             for entry in manifest.get("training_grid", [])
         }
 
-        human_zarr = Path(manifest["human_zarr"])
-        robot_zarr = Path(manifest["robot_zarr"])
+        human_zarr = resolve_task_path(task_dir, manifest["human_zarr"])
+        robot_zarr = resolve_task_path(task_dir, manifest["robot_zarr"])
 
         for human_count in requested_human_counts:
             for robot_count in requested_robot_counts:
@@ -170,8 +183,8 @@ def build_jobs(args: argparse.Namespace) -> tuple[list[Job], list[dict]]:
                     )
                     continue
 
-                human_mask = Path(grid_entry["human_mask"])
-                robot_mask = Path(grid_entry["robot_mask"])
+                human_mask = resolve_task_path(task_dir, grid_entry["human_mask"])
+                robot_mask = resolve_task_path(task_dir, grid_entry["robot_mask"])
 
                 missing_inputs = []
                 for path in [human_mask, robot_mask]:

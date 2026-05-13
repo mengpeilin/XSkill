@@ -5,7 +5,7 @@ save_dir: '${base_dev_dir}/experiment/diffusion_bc_realworld/pick_red_mug'
 project_name: realworld_pick_red_mug_diffusion_bc
 device: cuda:0
 
-num_epochs: 300
+num_epochs: 500
 lr: 1e-4
 weight_decay: 1e-6
 ckpt_frequency: 10
@@ -30,8 +30,8 @@ bc_resize: [320, 240]
 train_augmentations: ['random_crop_260_288', 'normalize']
 inference_augmentations: ['center_crop_260_288', 'normalize']
 
-pretrain_path: '${base_dev_dir}/experiment/pretrain_pick_mug/2026-05-07_00-02-40'
-pretrain_ckpt: 499
+pretrain_path: 'should be replaced'
+pretrain_ckpt: -1
 
 raw_representation: True
 prototype: False

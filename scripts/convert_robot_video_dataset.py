@@ -123,8 +123,10 @@ def build_episode_arrays(trajectory, state_key: str, action_key: str, gripper_wi
         raise ValueError("Episode does not contain enough aligned state, action, and gripper samples.")
 
     obs = build_pose_width_array(states_ee[:target_len, :7], gripper_width[:target_len], state_key)
+    actions_gripper_width = actions_ee[:target_len, -1]
     actions = build_pose_width_array(
-        actions_ee[:target_len, :],
+        actions_ee[:target_len, :7],
+        actions_gripper_width,
         action_key,
     )
     return obs, actions

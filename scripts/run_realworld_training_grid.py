@@ -19,7 +19,7 @@ def repo_root() -> Path:
 
 
 def default_manifest_root() -> Path:
-    return repo_root() / "data" / "processed"
+    return repo_root() / "zarr"
 
 
 def default_output_root() -> Path:
@@ -29,18 +29,26 @@ def default_output_root() -> Path:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--tasks", nargs="+", default=["all"])
-    parser.add_argument("--human-counts", nargs="+", type=int, default=[40, 70, 100, 200])
-    parser.add_argument("--robot-counts", nargs="+", type=int, default=[5, 40])
+    # parser.add_argument("--human-counts", nargs="+", type=int, default=[40, 70, 100, 200])
+    # parser.add_argument("--robot-counts", nargs="+", type=int, default=[5, 40])
+    parser.add_argument("--human-counts", nargs="+", type=int, default=[100])
+    parser.add_argument("--robot-counts", nargs="+", type=int, default=[40])
     parser.add_argument("--manifest-root", type=Path, default=default_manifest_root())
     parser.add_argument("--output-root", type=Path, default=default_output_root())
     parser.add_argument("--python", default=sys.executable)
-    parser.add_argument("--devices", nargs="+", default=["cuda:0"])
+    parser.add_argument("--devices", nargs="+", default=["cuda:1"])
     parser.add_argument("--max-concurrent", type=int, default=None)
     parser.add_argument("--skill-ckpt", type=int, default=499)
     parser.add_argument("--skill-max-epochs", type=int, default=None)
     parser.add_argument("--skill-save-every", type=int, default=None)
     parser.add_argument("--bc-num-epochs", type=int, default=None)
     parser.add_argument("--bc-ckpt-frequency", type=int, default=None)
+    parser.add_argument("--wandb-entity", type=str, default=os.environ.get("WANDB_ENTITY"))
+    parser.add_argument(
+        "--wandb-mode",
+        choices=["online", "offline", "disabled"],
+        default=os.environ.get("WANDB_MODE"),
+    )
     parser.add_argument("--skip-existing", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
@@ -391,6 +399,10 @@ def run_job(args: argparse.Namespace, job: Job, device: str, semaphore: threadin
             env.pop("CUDA_VISIBLE_DEVICES", None)
         else:
             env["CUDA_VISIBLE_DEVICES"] = visible_device
+        if args.wandb_entity:
+            env["WANDB_ENTITY"] = args.wandb_entity
+        if args.wandb_mode:
+            env["WANDB_MODE"] = args.wandb_mode
 
         try:
             log(f"[start] {job.name} on {device}", print_lock)

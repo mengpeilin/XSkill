@@ -5,9 +5,9 @@ hydra:
     dir: '${base_dev_dir}/experiment/pretrain_pick_mug/${now:%Y-%m-%d_%H-%M-%S}'
 
 batch_size: 20
-num_workers: 4
-pin_memory: False
-persistent_workers: False
+num_workers: 12
+pin_memory: True
+persistent_workers: True
 drop_last: True
 
 resize_shape: [160, 120]

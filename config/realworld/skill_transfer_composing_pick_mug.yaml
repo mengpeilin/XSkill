@@ -5,7 +5,7 @@ save_dir: '${base_dev_dir}/experiment/diffusion_bc_realworld/pick_red_mug'
 project_name: realworld_pick_red_mug_diffusion_bc
 device: cuda:0
 
-num_epochs: 500
+num_epochs: 1000
 lr: 1e-4
 weight_decay: 1e-6
 ckpt_frequency: 10
@@ -18,7 +18,7 @@ action_horizon: 8
 proto_horizon: 1
 
 batch_size: 64
-num_workers: 8
+num_workers: 12
 pin_memory: True
 persistent_workers: True
 

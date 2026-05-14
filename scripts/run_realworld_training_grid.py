@@ -13,6 +13,8 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 
+from xskill.common.replay_buffer import ReplayBuffer
+
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -31,13 +33,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tasks", nargs="+", default=["all"])
     # parser.add_argument("--human-counts", nargs="+", type=int, default=[40, 70, 100, 200])
     # parser.add_argument("--robot-counts", nargs="+", type=int, default=[5, 40])
-    parser.add_argument("--human-counts", nargs="+", type=int, default=[100])
+    parser.add_argument("--human-counts", nargs="+", type=int, default=[40, 70])
     parser.add_argument("--robot-counts", nargs="+", type=int, default=[40])
     parser.add_argument("--manifest-root", type=Path, default=default_manifest_root())
     parser.add_argument("--output-root", type=Path, default=default_output_root())
     parser.add_argument("--python", default=sys.executable)
-    parser.add_argument("--devices", nargs="+", default=["cuda:1"])
-    parser.add_argument("--max-concurrent", type=int, default=None)
+    parser.add_argument(
+        "--devices",
+        nargs="+",
+        default=["cuda:0"],
+        help="Device list used for scheduling. If --max-concurrent exceeds this list, devices are reused in round-robin order.",
+    )
+    parser.add_argument(
+        "--max-concurrent",
+        type=int,
+        default=None,
+        help="Total number of jobs to run at once across all listed devices.",
+    )
     parser.add_argument("--skill-ckpt", type=int, default=499)
     parser.add_argument("--skill-max-epochs", type=int, default=None)
     parser.add_argument("--skill-save-every", type=int, default=None)
@@ -224,14 +236,18 @@ def build_jobs(args: argparse.Namespace) -> tuple[list[Job], list[dict]]:
 
 
 def validate_args(args: argparse.Namespace) -> None:
+    if not args.devices:
+        raise ValueError("--devices must contain at least one device")
     if args.max_concurrent is None:
         args.max_concurrent = len(args.devices)
     if args.max_concurrent < 1:
         raise ValueError("--max-concurrent must be at least 1")
-    if args.max_concurrent > len(args.devices):
-        raise ValueError(
-            "--max-concurrent cannot exceed the number of device slots. Repeat a device in --devices if you want oversubscription."
-        )
+
+
+def build_device_slots(devices: list[str], max_concurrent: int) -> list[str]:
+    if max_concurrent <= len(devices):
+        return list(devices[:max_concurrent])
+    return [devices[index % len(devices)] for index in range(max_concurrent)]
 
 
 def runtime_device_config(device: str) -> dict:
@@ -280,6 +296,34 @@ def job_paths(output_root: Path, job: Job) -> dict:
         "skill_dir": job_root / "skill_discovery",
         "bc_root": job_root / "bc",
     }
+
+
+def skill_checkpoint_candidates(skill_dir: Path, ckpt: int) -> list[Path]:
+    return [
+        skill_dir / f"epoch={ckpt}.ckpt",
+        skill_dir / f"epoch={ckpt:02d}.ckpt",
+    ]
+
+
+def find_skill_checkpoint(skill_dir: Path, ckpt: int) -> Path | None:
+    for candidate in skill_checkpoint_candidates(skill_dir, ckpt):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def replay_buffer_ready(path: Path) -> bool:
+    if not path.exists():
+        return False
+    try:
+        replay_buffer = ReplayBuffer.create_from_path(str(path), mode="r")
+    except Exception:
+        return False
+    return replay_buffer.n_episodes > 0
+
+
+def label_outputs_ready(human_proto: Path, robot_proto: Path) -> bool:
+    return replay_buffer_ready(human_proto) and replay_buffer_ready(robot_proto)
 
 
 def build_commands(args: argparse.Namespace, job: Job, device: str, paths: dict) -> dict:
@@ -379,6 +423,9 @@ def run_job(args: argparse.Namespace, job: Job, device: str, semaphore: threadin
             return existing_summary
 
         commands = build_commands(args, job, device, paths)
+        existing_skill_checkpoint = find_skill_checkpoint(paths["skill_dir"], args.skill_ckpt)
+        skip_skill = existing_skill_checkpoint is not None
+        skip_label = skip_skill and label_outputs_ready(commands["human_proto"], commands["robot_proto"])
         summary = {
             "task": job.task,
             "human_demos": job.human_demos,
@@ -388,6 +435,9 @@ def run_job(args: argparse.Namespace, job: Job, device: str, semaphore: threadin
             "skill_dir": str(paths["skill_dir"]),
             "robot_proto": str(commands["robot_proto"]),
             "human_proto": str(commands["human_proto"]),
+            "skill_checkpoint": str(existing_skill_checkpoint)
+            if existing_skill_checkpoint is not None
+            else str(skill_checkpoint_candidates(paths["skill_dir"], args.skill_ckpt)[0]),
             "status": "running",
             "started_at": timestamp(),
             "commands": {
@@ -419,18 +469,41 @@ def run_job(args: argparse.Namespace, job: Job, device: str, semaphore: threadin
 
         try:
             log(f"[start] {job.name} on {device}", print_lock)
-            run_stage(commands["skill"], paths["logs_dir"] / "skill.log", env)
-            summary["skill_finished_at"] = timestamp()
-            write_json(paths["summary_path"], summary)
+            if skip_skill:
+                summary["skill_status"] = "skipped_existing"
+                summary["skill_finished_at"] = (
+                    existing_summary.get("skill_finished_at")
+                    if existing_summary and existing_summary.get("skill_finished_at")
+                    else timestamp()
+                )
+                write_json(paths["summary_path"], summary)
+                log(f"[skip-skill] {job.name} using {existing_skill_checkpoint.name}", print_lock)
+            else:
+                run_stage(commands["skill"], paths["logs_dir"] / "skill.log", env)
+                summary["skill_status"] = "succeeded"
+                summary["skill_finished_at"] = timestamp()
+                write_json(paths["summary_path"], summary)
 
-            run_stage(commands["label"], paths["logs_dir"] / "label.log", env)
-            summary["label_finished_at"] = timestamp()
-            write_json(paths["summary_path"], summary)
+            if skip_label:
+                summary["label_status"] = "skipped_existing"
+                summary["label_finished_at"] = (
+                    existing_summary.get("label_finished_at")
+                    if existing_summary and existing_summary.get("label_finished_at")
+                    else timestamp()
+                )
+                write_json(paths["summary_path"], summary)
+                log(f"[skip-label] {job.name}", print_lock)
+            else:
+                run_stage(commands["label"], paths["logs_dir"] / "label.log", env)
+                summary["label_status"] = "succeeded"
+                summary["label_finished_at"] = timestamp()
+                write_json(paths["summary_path"], summary)
 
             bc_before = child_directories(paths["bc_root"])
             run_stage(commands["bc"], paths["logs_dir"] / "bc.log", env)
             bc_run_dir = detect_new_directory(paths["bc_root"], bc_before)
             summary["bc_run_dir"] = str(bc_run_dir) if bc_run_dir is not None else None
+            summary["bc_status"] = "succeeded"
             summary["status"] = "succeeded"
             summary["finished_at"] = timestamp()
             write_json(paths["summary_path"], summary)
@@ -438,6 +511,7 @@ def run_job(args: argparse.Namespace, job: Job, device: str, semaphore: threadin
             return summary
         except StageFailure as error:
             summary["status"] = "failed"
+            summary[f"{error.stage}_status"] = "failed"
             summary["failed_stage"] = error.stage
             summary["returncode"] = error.returncode
             summary["failed_log"] = str(error.log_path)
@@ -470,11 +544,12 @@ def main() -> int:
     semaphore = threading.Semaphore(args.max_concurrent)
     print_lock = threading.Lock()
     device_pool = queue.Queue()
-    for device in args.devices:
+    device_slots = build_device_slots(args.devices, args.max_concurrent)
+    for device in device_slots:
         device_pool.put(device)
 
     results = []
-    with ThreadPoolExecutor(max_workers=len(jobs)) as executor:
+    with ThreadPoolExecutor(max_workers=min(len(jobs), len(device_slots))) as executor:
         future_to_job = {}
         for job in jobs:
             device = device_pool.get()

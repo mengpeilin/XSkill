@@ -40,47 +40,47 @@ DEFAULT_HUMAN_COUNTS = [40, 70, 100, 200]
 DEFAULT_ROBOT_COUNTS = [5, 40]
 
 TASK_SPECS = {
-    "insert_donut": {
-        "robot_input": "data/insert_donut",
-        "human_total": 300,
-        "robot_total": 200,
-        "human_sources": [
-            {"dataset": "xiaochyVera/insert_donut_human_2"},
-            {"dataset": "xiaochyVera/insert_donut_human_3"},
-        ],
-    },
-    # "pick_place_red_mug": {
-    #     "robot_input": "data/pick_place_red_mug",
-    #     "human_total": 196,
-    #     "robot_total": 100,
+    # "insert_donut": {
+    #     "robot_input": "data/insert_donut",
+    #     "human_total": 300,
+    #     "robot_total": 200,
     #     "human_sources": [
-    #         {"dataset": "Kovavavvavava/pick_place_red_mug_20260327_2"},
-    #         {"dataset": "Kovavavvavava/pick_place_red_mug_20260327_1"},
-    #         {"dataset": "xiaochyVera/pick_red_mug_human", "skip_episodes": [6, 7]},
-    #         {"dataset": "xiaochyVera/pick_red_mug_human_1", "skip_episodes": [8]},
-    #         {"dataset": "xiaochyVera/pick_red_mug_human_2", "skip_episodes": [4]},
-    #         {"dataset": "xiaochyVera/pick_red_mug_human_3"},
-    #         {"dataset": "xiaochyVera/pick_red_mug_human_4"},
+    #         {"dataset": "xiaochyVera/insert_donut_human_2"},
+    #         {"dataset": "xiaochyVera/insert_donut_human_3"},
     #     ],
     # },
-    "pick_place_toys": {
-        "robot_input": "data/pick_place_toys",
-        "human_total": 288,
-        "robot_total": 200,
+    "pick_place_red_mug": {
+        "robot_input": "data/pick_place_red_mug",
+        "human_total": 196,
+        "robot_total": 100,
         "human_sources": [
-            {"dataset": "xiaochyVera/pick_toys_human_5_1_1", "skip_episodes": [0, 12, 15, 36, 42, 43, 77, 85, 88]},
-            {"dataset": "xiaochyVera/pick_toys_human_2", "skip_episodes": [12, 19]},
-            {"dataset": "xiaochyVera/pick_toys_human_3", "skip_episodes": [0]},
+            {"dataset": "Kovavavvavava/pick_place_red_mug_20260327_2"},
+            {"dataset": "Kovavavvavava/pick_place_red_mug_20260327_1"},
+            {"dataset": "xiaochyVera/pick_red_mug_human", "skip_episodes": [6, 7]},
+            {"dataset": "xiaochyVera/pick_red_mug_human_1", "skip_episodes": [8]},
+            {"dataset": "xiaochyVera/pick_red_mug_human_2", "skip_episodes": [4]},
+            {"dataset": "xiaochyVera/pick_red_mug_human_3"},
+            {"dataset": "xiaochyVera/pick_red_mug_human_4"},
         ],
     },
-    "stack_bowls": {
-        "robot_input": "data/stack_bowls",
-        "human_total": 300,
-        "robot_total": 200,
-        "human_sources": [
-            {"dataset": "xiaochyVera/stack_bowls_human_5_1"},
-        ],
-    },
+    # "pick_place_toys": {
+    #     "robot_input": "data/pick_place_toys",
+    #     "human_total": 288,
+    #     "robot_total": 200,
+    #     "human_sources": [
+    #         {"dataset": "xiaochyVera/pick_toys_human_5_1_1", "skip_episodes": [0, 12, 15, 36, 42, 43, 77, 85, 88]},
+    #         {"dataset": "xiaochyVera/pick_toys_human_2", "skip_episodes": [12, 19]},
+    #         {"dataset": "xiaochyVera/pick_toys_human_3", "skip_episodes": [0]},
+    #     ],
+    # },
+    # "stack_bowls": {
+    #     "robot_input": "data/stack_bowls",
+    #     "human_total": 300,
+    #     "robot_total": 200,
+    #     "human_sources": [
+    #         {"dataset": "xiaochyVera/stack_bowls_human_5_1"},
+    #     ],
+    # },
 }
 
 

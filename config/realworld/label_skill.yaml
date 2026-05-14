@@ -16,8 +16,12 @@ datasets:
     save_path: '${exp_path}/human_encode_protos/ckpt_${ckpt}/human.zarr'
     camera_view: cam1
     mask_path: null
+    name: null
+    resize_shape: null
   robot:
     data_path: '${base_dev_dir}/data/processed/pick_red_mug/robot.zarr'
     save_path: '${exp_path}/encode_protos/ckpt_${ckpt}/robot.zarr'
     camera_view: cam1
     mask_path: null
+    name: null
+    resize_shape: null

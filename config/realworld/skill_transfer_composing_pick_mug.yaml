@@ -9,6 +9,13 @@ num_epochs: 500
 lr: 1e-4
 weight_decay: 1e-6
 ckpt_frequency: 10
+gradient_accumulation_steps: 1
+fused_optimizer: True
+mixed_precision: bf16
+compile_model: True
+compile_mode: reduce-overhead
+matmul_precision: high
+allow_tf32: True
 
 seed: 43
 
@@ -18,9 +25,10 @@ action_horizon: 8
 proto_horizon: 1
 
 batch_size: 64
-num_workers: 8
+num_workers: 4
 pin_memory: True
 persistent_workers: True
+prefetch_factor: 4
 
 obs_dim: 7
 action_dim: 7

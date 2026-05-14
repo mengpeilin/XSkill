@@ -34,6 +34,8 @@ class Model(pl.LightningModule):
         positive_window=1,
         negative_window=10,
         pretrain_pipeline=None,
+        compile_model=False,
+        compile_mode="reduce-overhead",
     ):
 
         super(Model, self).__init__()
@@ -70,6 +72,27 @@ class Model(pl.LightningModule):
 
 
         self.pretrain_pipeline = pretrain_pipeline
+        self.compile_model = compile_model
+        self.compile_mode = compile_mode
+        self._compiled_encoder_q = None
+        self._compiled_skill_prior = None
+
+    def on_train_start(self):
+        if not self.compile_model:
+            return
+        if self.device.type != "cuda" or not hasattr(torch, "compile"):
+            return
+        self._compiled_encoder_q = torch.compile(self.encoder_q, mode=self.compile_mode)
+        if self.skill_prior is not None:
+            self._compiled_skill_prior = torch.compile(self.skill_prior, mode=self.compile_mode)
+
+    def _encoder_q_forward(self, *args, **kwargs):
+        encoder = self._compiled_encoder_q if self._compiled_encoder_q is not None else self.encoder_q
+        return encoder(*args, **kwargs)
+
+    def _skill_prior_forward(self, *args, **kwargs):
+        skill_prior = self._compiled_skill_prior if self._compiled_skill_prior is not None else self.skill_prior
+        return skill_prior(*args, **kwargs)
 
     # @profile
     def forward(self, im_q, bbox_q, im_k=None, bbox_k=None):
@@ -81,8 +104,8 @@ class Model(pl.LightningModule):
             logits, targets
         """
         # vision backbone -> projection [normalized] -> prototype
-        zc_q = self.encoder_q(im_q[:, self.stack_frames - 1:], None)  # z: NxC
-        zc_k = self.encoder_q(im_k[:, self.stack_frames - 1:], None)  # z: NxC
+        zc_q = self._encoder_q_forward(im_q[:, self.stack_frames - 1:], None)  # z: NxC
+        zc_k = self._encoder_q_forward(im_k[:, self.stack_frames - 1:], None)  # z: NxC
 
         return zc_q, zc_k
 
@@ -91,7 +114,7 @@ class Model(pl.LightningModule):
         target = torch.softmax(zc_q.detach() / self.T, dim=1)
         # all in one: (bxTxOx4)-> (bxTxf) -> proto logits
         # spatial attention -> temporal attention
-        z_logits = self.skill_prior(im_q[:, :self.stack_frames], None)
+        z_logits = self._skill_prior_forward(im_q[:, :self.stack_frames], None)
         criterion = nn.CrossEntropyLoss()
         loss = criterion(z_logits, target)
 

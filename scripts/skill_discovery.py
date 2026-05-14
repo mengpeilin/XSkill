@@ -9,6 +9,20 @@ from xskill.dataset.dataset import ConcatDataset
 from xskill.utility.transform import get_transform_pipeline
 
 
+def configure_runtime_speedups(cfg: DictConfig):
+    matmul_precision = cfg.get("matmul_precision")
+    if matmul_precision:
+        torch.set_float32_matmul_precision(str(matmul_precision))
+
+    if not torch.cuda.is_available():
+        return
+
+    allow_tf32 = bool(cfg.get("allow_tf32", True))
+    torch.backends.cuda.matmul.allow_tf32 = allow_tf32
+    torch.backends.cudnn.allow_tf32 = allow_tf32
+    torch.backends.cudnn.benchmark = True
+
+
 def sample_shape(dataset):
     sample = dataset[0]
     if isinstance(sample, tuple) and len(sample) == 2 and hasattr(sample[0], "im_q"):
@@ -22,6 +36,7 @@ def sample_shape(dataset):
             config_path="../config/realworld",
             config_name="skill_discovery")
 def pretrain(cfg: DictConfig):
+    configure_runtime_speedups(cfg)
     output_dir = HydraConfig.get().runtime.output_dir
     print(f"output_dir: {output_dir}")
     pretrain_pipeline = get_transform_pipeline(cfg.augmentations)
@@ -49,14 +64,17 @@ def pretrain(cfg: DictConfig):
     print("human dataset len:", human_len)
     print("dataset mode:", dataset_mode)
 
-    dataloader = torch.utils.data.DataLoader(
-        train_dataset,
-        batch_size=cfg.batch_size,
-        num_workers=cfg.num_workers,
-        shuffle=True,
-        pin_memory=cfg.pin_memory,
-        persistent_workers=cfg.persistent_workers,
-        drop_last=cfg.drop_last)
+    dataloader_kwargs = {
+        "batch_size": cfg.batch_size,
+        "num_workers": cfg.num_workers,
+        "shuffle": True,
+        "pin_memory": cfg.pin_memory,
+        "persistent_workers": cfg.persistent_workers if cfg.num_workers > 0 else False,
+        "drop_last": cfg.drop_last,
+    }
+    if cfg.num_workers > 0 and cfg.get("prefetch_factor") is not None:
+        dataloader_kwargs["prefetch_factor"] = int(cfg.prefetch_factor)
+    dataloader = torch.utils.data.DataLoader(train_dataset, **dataloader_kwargs)
 
     steps_per_epoch = len(dataloader)
 
@@ -88,7 +106,7 @@ def pretrain(cfg: DictConfig):
         **cfg.Trainer,
     )
 
-    trainer.fit(model=model, train_dataloaders=dataloader)
+    trainer.fit(model=model, train_dataloaders=dataloader, ckpt_path=cfg.get("ckpt_path"))
 
 
 if __name__ == "__main__":

@@ -9,6 +9,11 @@ num_workers: 12
 pin_memory: True
 persistent_workers: True
 drop_last: True
+prefetch_factor: 4
+matmul_precision: high
+allow_tf32: True
+compile_model: True
+compile_mode: reduce-overhead
 
 resize_shape: [160, 120]
 repeat_shorter_dataset: True
@@ -51,6 +56,7 @@ Trainer:
   max_epochs: 500
   enable_progress_bar: False
   log_every_n_steps: 100
+  precision: bf16-mixed
 
 n_layer: 8
 
@@ -69,6 +75,8 @@ Model:
   time_augment: True
   swav_loss_coef: 0.5
   cluster_loss_coef: 1
+  compile_model: ${compile_model}
+  compile_mode: ${compile_mode}
   lr: 1e-4
   skill_prior_encoder: null
   use_lr_scheduler: False

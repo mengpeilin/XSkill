@@ -9,6 +9,13 @@ from torch import nn
 
 class Model(pl.LightningModule):
 
+    _LEGACY_COMPILED_PREFIX_MAP = (
+        ("_compiled_encoder_q._orig_mod.", "encoder_q."),
+        ("_compiled_skill_prior._orig_mod.", "skill_prior."),
+        ("_compiled_encoder_q.", "encoder_q."),
+        ("_compiled_skill_prior.", "skill_prior."),
+    )
+
     def __init__(
         self,
         encoder_q,
@@ -82,9 +89,27 @@ class Model(pl.LightningModule):
             return
         if self.device.type != "cuda" or not hasattr(torch, "compile"):
             return
-        self._compiled_encoder_q = torch.compile(self.encoder_q, mode=self.compile_mode)
+        self.__dict__["_compiled_encoder_q"] = torch.compile(self.encoder_q, mode=self.compile_mode)
         if self.skill_prior is not None:
-            self._compiled_skill_prior = torch.compile(self.skill_prior, mode=self.compile_mode)
+            self.__dict__["_compiled_skill_prior"] = torch.compile(self.skill_prior, mode=self.compile_mode)
+
+    @classmethod
+    def _normalize_legacy_compiled_state_dict(cls, state_dict):
+        normalized_state_dict = {}
+        for key, value in state_dict.items():
+            normalized_key = key
+            for legacy_prefix, current_prefix in cls._LEGACY_COMPILED_PREFIX_MAP:
+                if key.startswith(legacy_prefix):
+                    normalized_key = current_prefix + key[len(legacy_prefix):]
+                    break
+            normalized_state_dict.setdefault(normalized_key, value)
+        return normalized_state_dict
+
+    def load_state_dict(self, state_dict, strict=True):
+        return super().load_state_dict(
+            self._normalize_legacy_compiled_state_dict(state_dict),
+            strict=strict,
+        )
 
     def _encoder_q_forward(self, *args, **kwargs):
         encoder = self._compiled_encoder_q if self._compiled_encoder_q is not None else self.encoder_q

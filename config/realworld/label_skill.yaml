@@ -7,7 +7,7 @@ hydra:
 exp_path: null
 ckpt: 499
 device: cuda:0
-resize_shape: [160, 120]
+resize_shape: [320, 240]
 augmentations: ['center_crop_110_146', 'normalize']
 
 datasets:

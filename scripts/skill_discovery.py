@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import hydra
 import pytorch_lightning as pl
 import torch
@@ -30,6 +32,36 @@ def sample_shape(dataset):
     if hasattr(sample, "im_q"):
         return sample.im_q.shape
     raise TypeError("Unsupported dataset sample format.")
+
+
+def build_wandb_init_kwargs(cfg: DictConfig, output_dir: str) -> dict:
+    wandb_cfg = cfg.wandb
+    robot_mask = cfg.robot_dataset.get("mask")
+    human_mask = cfg.human_dataset.get("mask")
+    robot_mask_token = Path(str(robot_mask)).stem if robot_mask else "robot_mask_all"
+    human_mask_token = Path(str(human_mask)).stem if human_mask else "human_mask_all"
+    group_name = str(wandb_cfg.group)
+    run_name = wandb_cfg.get("run_name")
+    if not run_name:
+        run_name = "__".join(
+            [
+                group_name,
+                robot_mask_token,
+                human_mask_token,
+                f"seed_{int(cfg.get('seed', 0))}",
+                Path(output_dir).name,
+            ]
+        )
+    tags = [str(tag) for tag in OmegaConf.to_container(wandb_cfg.tags, resolve=True)]
+    return {
+        "project": str(wandb_cfg.project),
+        "group": group_name,
+        "job_type": str(wandb_cfg.job_type),
+        "name": str(run_name),
+        "tags": tags,
+        "dir": output_dir,
+        "config": OmegaConf.to_container(cfg, resolve=False),
+    }
 
 
 @hydra.main(version_base=None,
@@ -94,12 +126,12 @@ def pretrain(cfg: DictConfig):
         filename="{epoch:02d}",
     )
 
-    # Set up logger
-    wandb.init(project="Real_kitchen_prototype_learning")
-    # wandb_logger = WandbLogger(project="visual_skill_prior")
-    wandb.config.update(OmegaConf.to_container(cfg))
+    wandb_init_kwargs = build_wandb_init_kwargs(cfg, output_dir)
+    print(f"wandb project: {wandb_init_kwargs['project']}")
+    print(f"wandb group: {wandb_init_kwargs['group']}")
+    print(f"wandb run: {wandb_init_kwargs['name']}")
+    wandb.init(**wandb_init_kwargs)
     trainer = pl.Trainer(
-        # logger=wandb_logger,
         callbacks=[checkpoint_callback],
         enable_checkpointing=True,
         default_root_dir=output_dir,

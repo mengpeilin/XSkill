@@ -20,6 +20,9 @@ from xskill.model.diffusion_model import get_resnet, replace_bn_with_gn
 from xskill.model.encoder import ResnetConv
 
 
+REQUIRED_BC_CAMERA_VIEWS = ("cam0", "cam1", "wrist_cam")
+
+
 def configure_runtime_speedups(cfg):
     matmul_precision = cfg.get("matmul_precision")
     if matmul_precision:
@@ -64,49 +67,45 @@ def autocast_context(cfg, device):
     return torch.autocast(device_type="cuda", dtype=torch.bfloat16)
 
 
-def checkpoint_epoch_from_path(path: str | os.PathLike[str]) -> int | None:
-    stem = Path(path).stem
-    for prefix in ["resume_", "ckpt_"]:
-        if not stem.startswith(prefix):
-            continue
-        value = stem[len(prefix) :]
-        if value.isdigit():
-            return int(value)
-    return None
+def validate_config(cfg: DictConfig):
+    camera_views = list(cfg.dataset.camera_views)
+    if camera_views != list(REQUIRED_BC_CAMERA_VIEWS):
+        raise ValueError(
+            "BC policy training requires dataset.camera_views="
+            f"{list(REQUIRED_BC_CAMERA_VIEWS)}, got {camera_views}."
+        )
 
 
-def save_resume_state(save_dir, epoch_idx, nets, ema, optimizer, lr_scheduler):
-    torch.save(
-        {
-            "epoch": int(epoch_idx),
-            "nets": nets.state_dict(),
-            "ema_averaged_model": ema.averaged_model.state_dict(),
-            "ema_optimization_step": int(ema.optimization_step),
-            "optimizer": optimizer.state_dict(),
-            "lr_scheduler": lr_scheduler.state_dict(),
-        },
-        os.path.join(save_dir, f"resume_{epoch_idx}.pt"),
-    )
-
-
-def load_resume_state(resume_path, nets, ema, optimizer, lr_scheduler, device):
-    checkpoint = torch.load(resume_path, map_location=device)
-
-    if isinstance(checkpoint, dict) and "nets" in checkpoint:
-        nets.load_state_dict(checkpoint["nets"])
-        ema.averaged_model.load_state_dict(checkpoint["ema_averaged_model"])
-        optimizer.load_state_dict(checkpoint["optimizer"])
-        lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
-        ema.optimization_step = int(checkpoint.get("ema_optimization_step", 0))
-        return int(checkpoint["epoch"]) + 1, "full_state"
-
-    warm_start_epoch = checkpoint_epoch_from_path(resume_path)
-    if warm_start_epoch is None:
-        raise ValueError(f"Could not infer epoch from resume checkpoint path: {resume_path}")
-
-    nets.load_state_dict(checkpoint)
-    ema.averaged_model.load_state_dict(checkpoint)
-    return warm_start_epoch + 1, "weights_only"
+def build_wandb_init_kwargs(cfg: DictConfig, save_dir: str) -> dict:
+    wandb_cfg = cfg.wandb
+    mask_values = OmegaConf.to_container(cfg.dataset.mask, resolve=True) or []
+    mask_token = Path(str(mask_values[0])).stem if mask_values else "mask_all"
+    camera_token = "views_" + "-".join(REQUIRED_BC_CAMERA_VIEWS)
+    proto_token = f"proto_ckpt_{int(cfg.pretrain_ckpt)}"
+    seed_token = f"seed_{int(cfg.seed)}"
+    group_name = str(wandb_cfg.group)
+    run_name = wandb_cfg.get("run_name")
+    if not run_name:
+        run_name = "__".join(
+            [
+                group_name,
+                camera_token,
+                mask_token,
+                proto_token,
+                seed_token,
+                Path(save_dir).name,
+            ]
+        )
+    tags = [str(tag) for tag in OmegaConf.to_container(wandb_cfg.tags, resolve=True)]
+    return {
+        "project": str(wandb_cfg.project),
+        "group": group_name,
+        "job_type": str(wandb_cfg.job_type),
+        "name": str(run_name),
+        "tags": tags,
+        "dir": save_dir,
+        "config": OmegaConf.to_container(cfg, resolve=False),
+    }
 
 
 @hydra.main(
@@ -116,26 +115,20 @@ def load_resume_state(resume_path, nets, ema, optimizer, lr_scheduler, device):
 )
 def train_diffusion_bc(cfg: DictConfig):
     configure_runtime_speedups(cfg)
+    validate_config(cfg)
 
-    resume_path = cfg.get("resume_path")
-    resume_run_dir = cfg.get("resume_run_dir")
-    if resume_path is not None:
-        resume_path = os.path.abspath(os.path.expanduser(str(resume_path)))
-    if resume_run_dir is None and resume_path is not None:
-        resume_run_dir = str(Path(resume_path).resolve().parent)
-
-    if resume_run_dir is not None:
-        save_dir = os.path.abspath(os.path.expanduser(str(resume_run_dir)))
-    else:
-        unique_id = str(uuid.uuid4())
-        save_dir = os.path.join(cfg.save_dir, unique_id)
+    unique_id = str(uuid.uuid4())
+    save_dir = os.path.join(cfg.save_dir, unique_id)
     cfg.save_dir = save_dir
     os.makedirs(save_dir, exist_ok=True)
     OmegaConf.save(cfg, os.path.join(save_dir, "hydra_config.yaml"))
     print(f"output_dir: {save_dir}")
 
-    wandb.init(project=cfg.project_name)
-    wandb.config.update(OmegaConf.to_container(cfg))
+    wandb_init_kwargs = build_wandb_init_kwargs(cfg, save_dir)
+    print(f"wandb project: {wandb_init_kwargs['project']}")
+    print(f"wandb group: {wandb_init_kwargs['group']}")
+    print(f"wandb run: {wandb_init_kwargs['name']}")
+    wandb.init(**wandb_init_kwargs)
 
     torch.manual_seed(cfg.seed)
     np.random.seed(cfg.seed)
@@ -163,10 +156,6 @@ def train_diffusion_bc(cfg: DictConfig):
 
     print("dataset len", len(dataset))
     num_camera_views = len(cfg.dataset.camera_views)
-    if list(cfg.dataset.camera_views) != ["cam1", "wrist_cam"]:
-        raise ValueError(
-            f"Expected dataset.camera_views=['cam1', 'wrist_cam'], got {list(cfg.dataset.camera_views)}"
-        )
     print("num_camera_views", num_camera_views)
 
     if cfg.vision_feature_dim == 512:
@@ -229,18 +218,6 @@ def train_diffusion_bc(cfg: DictConfig):
         num_training_steps=len(dataloader) * cfg.num_epochs,
     )
 
-    start_epoch = 0
-    if resume_path is not None:
-        start_epoch, resume_mode = load_resume_state(
-            resume_path,
-            nets,
-            ema,
-            optimizer,
-            lr_scheduler,
-            device,
-        )
-        print(f"Resuming BC from {resume_path} ({resume_mode}) at epoch {start_epoch}")
-
     compiled_vision_encoder = maybe_compile_module(nets["vision_encoder"], cfg, device)
     compiled_proto_pred_net = maybe_compile_module(nets["proto_pred_net"], cfg, device)
     compiled_noise_pred_net = maybe_compile_module(nets["noise_pred_net"], cfg, device)
@@ -251,7 +228,7 @@ def train_diffusion_bc(cfg: DictConfig):
     grad_accumulation_steps = max(int(cfg.get("gradient_accumulation_steps", 1)), 1)
     non_blocking = bool(cfg.pin_memory) and device.type == "cuda"
 
-    for epoch_idx in range(start_epoch, cfg.num_epochs):
+    for epoch_idx in range(cfg.num_epochs):
         epoch_loss = []
         epoch_action_loss = []
         epoch_proto_prediction_loss = []
@@ -268,7 +245,7 @@ def train_diffusion_bc(cfg: DictConfig):
 
             if nimage.ndim != 6:
                 raise ValueError(
-                    f"Expected images with shape (B, T, 2, C, H, W), got {tuple(nimage.shape)}"
+                    f"Expected images with shape (B, T, V, C, H, W), got {tuple(nimage.shape)}"
                 )
 
             with autocast_context(cfg, device):
@@ -352,12 +329,11 @@ def train_diffusion_bc(cfg: DictConfig):
             }
         )
 
-        if epoch_idx % cfg.ckpt_frequency == 0 or epoch_idx == cfg.num_epochs - 1:
+        if epoch_idx % cfg.ckpt_frequency == 0:
             torch.save(
                 ema.averaged_model.state_dict(),
                 os.path.join(save_dir, f"ckpt_{epoch_idx}.pt"),
             )
-            save_resume_state(save_dir, epoch_idx, nets, ema, optimizer, lr_scheduler)
 
 
 if __name__ == "__main__":

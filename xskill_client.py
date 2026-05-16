@@ -13,6 +13,7 @@ from polaris.config import PolicyArgs
 VIZ_H = 240
 VIZ_W = 426
 GRIPPER_WIDTH_THRESHOLD = 0.025
+REQUIRED_BC_CAMERA_VIEWS = ("cam0", "cam1", "wrist_cam")
 
 
 @InferenceClient.register(client_name="XSkill")
@@ -32,6 +33,7 @@ class XSkillClient(InferenceClient):
 		self.action_chunk: np.ndarray | None = None
 		self.actions_from_chunk_completed = 0
 		self.motion_gen = None
+		self.camera_views = None
 
 	@property
 	def rerender(self) -> bool:
@@ -41,7 +43,8 @@ class XSkillClient(InferenceClient):
 		self.action_chunk = None
 		self.actions_from_chunk_completed = 0
 		self.socket.send(pickle.dumps({"reset": True}))
-		self.socket.recv()
+		response = pickle.loads(self.socket.recv())
+		self._update_camera_views(response)
 
 	def infer(
 		self, obs: dict, instruction: str, return_viz: bool = False
@@ -81,14 +84,12 @@ class XSkillClient(InferenceClient):
 
 	def _extract_observation(self, obs_dict: dict) -> tuple[np.ndarray, np.ndarray]:
 		splat_obs = obs_dict["splat"]
-		missing_keys = [key for key in ("cam1", "wrist_cam") if key not in splat_obs]
+		camera_views = self._resolve_camera_views()
+		missing_keys = [key for key in camera_views if key not in splat_obs]
 		if missing_keys:
 			raise KeyError(f"Missing camera keys in obs['splat']: {missing_keys}")
 		images = np.stack(
-			[
-				np.asarray(splat_obs["cam1"], dtype=np.uint8),
-				np.asarray(splat_obs["wrist_cam"], dtype=np.uint8),
-			],
+			[np.asarray(splat_obs[key], dtype=np.uint8) for key in camera_views],
 			axis=0,
 		)
 
@@ -97,6 +98,29 @@ class XSkillClient(InferenceClient):
 		gripper_width = self._extract_gripper_width(robot_state, ee_pose)
 		ee_state = self._ee_pose_to_rotvec_state(ee_pose, gripper_width)
 		return images, ee_state
+
+	def _resolve_camera_views(self) -> tuple[str, ...]:
+		if self.camera_views is not None:
+			return self.camera_views
+		self.socket.send(pickle.dumps({"describe": True}))
+		response = pickle.loads(self.socket.recv())
+		if response.get("status") == "error":
+			raise RuntimeError(response.get("message", "xskill server error"))
+		self._update_camera_views(response)
+		if self.camera_views is None:
+			raise RuntimeError("xskill server did not return camera_views.")
+		return self.camera_views
+
+	def _update_camera_views(self, response: dict) -> None:
+		camera_views = response.get("camera_views")
+		if not camera_views:
+			return
+		camera_views = tuple(str(view) for view in camera_views)
+		if camera_views != REQUIRED_BC_CAMERA_VIEWS:
+			raise RuntimeError(
+				f"XSkillClient requires camera views {REQUIRED_BC_CAMERA_VIEWS}, got {camera_views}."
+			)
+		self.camera_views = camera_views
 
 	def _extract_gripper_width(self, robot_state: dict, ee_pose: np.ndarray) -> np.ndarray:
 		for key in ("gripper_width", "gripper_pos"):

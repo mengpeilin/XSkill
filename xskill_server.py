@@ -58,6 +58,8 @@ CRITICAL_CONFIG_FIELDS = (
 	"num_diffusion_iters",
 )
 
+REQUIRED_BC_CAMERA_VIEWS = ["cam0", "cam1", "wrist_cam"]
+
 
 def set_seed(seed: int):
 	random.seed(seed)
@@ -177,9 +179,10 @@ def validate_config(cfg):
 	if int(cfg.action_dim) != 7:
 		raise ValueError(f"Expected action_dim=7, got {cfg.action_dim}.")
 	camera_views = list(cfg.dataset.camera_views)
-	if camera_views != ["cam1", "wrist_cam"]:
+	if camera_views != REQUIRED_BC_CAMERA_VIEWS:
 		raise ValueError(
-			f"Expected dataset.camera_views=['cam1', 'wrist_cam'], got {camera_views}."
+			"Inference requires dataset.camera_views="
+			f"{REQUIRED_BC_CAMERA_VIEWS}, got {camera_views}."
 		)
 
 
@@ -189,7 +192,7 @@ def build_policy(cfg, ckpt_path: str, device: torch.device):
 	obs_dim = int(cfg.obs_dim)
 	proto_horizon = int(cfg.proto_horizon)
 	proto_dim = int(cfg.proto_dim)
-	visual_feature_dim_per_step = vision_feature_dim * 2
+	visual_feature_dim_per_step = vision_feature_dim * len(cfg.dataset.camera_views)
 
 	if vision_feature_dim == 512:
 		vision_encoder = get_resnet("resnet18")
@@ -244,8 +247,8 @@ def load_stats(stats_path: str):
 
 
 def image_to_tensor(image: np.ndarray, pipeline):
-	if image.ndim != 4 or image.shape[0] != 2:
-		raise ValueError(f"Expected images with shape (2, H, W, 3), got {image.shape}.")
+	if image.ndim != 4:
+		raise ValueError(f"Expected images with shape (V, H, W, 3), got {image.shape}.")
 	image_tensor = torch.from_numpy(image.astype(np.float32) / 255.0).permute(0, 3, 1, 2)
 	if pipeline is not None:
 		image_tensor = pipeline(image_tensor)
@@ -317,12 +320,16 @@ def resize_images(images: np.ndarray, resize_shape):
 	return np.stack([cv2.resize(image, resize_shape) for image in images], axis=0)
 
 
-def select_request_images(request: dict, resize_shape):
+def select_request_images(request: dict, resize_shape, expected_num_views: int):
 	if "images" not in request:
 		raise KeyError("Request must contain 'images'.")
 	images = np.asarray(request["images"], dtype=np.uint8)
-	if images.ndim != 4 or images.shape[0] != 2:
-		raise ValueError(f"Expected 'images' with shape (2, H, W, 3), got {images.shape}.")
+	if images.ndim != 4:
+		raise ValueError(f"Expected 'images' with shape (V, H, W, 3), got {images.shape}.")
+	if images.shape[0] != expected_num_views:
+		raise ValueError(
+			f"Expected {expected_num_views} camera views in request, got {images.shape[0]}."
+		)
 	return resize_images(images, resize_shape)
 
 
@@ -365,6 +372,7 @@ def main():
 	print(f"Loaded prototype demo episode {args.demo_episode} from {args.proto_path}")
 
 	obs_horizon = int(cfg.obs_horizon)
+	expected_num_views = len(cfg.dataset.camera_views)
 	resize_shape = tuple(cfg.bc_resize) if cfg.get("bc_resize") else None
 	runtime_pipeline = get_runtime_pipeline(cfg)
 	image_buf = deque(maxlen=obs_horizon)
@@ -379,13 +387,30 @@ def main():
 		raw = socket.recv()
 		try:
 			request = pickle.loads(raw)
+			if request.get("describe"):
+				socket.send(
+					pickle.dumps(
+						{
+							"status": "ok",
+							"camera_views": list(cfg.dataset.camera_views),
+						}
+					)
+				)
+				continue
 			if request.get("reset"):
 				image_buf.clear()
 				state_buf.clear()
-				socket.send(pickle.dumps({"status": "ok"}))
+				socket.send(
+					pickle.dumps(
+						{
+							"status": "ok",
+							"camera_views": list(cfg.dataset.camera_views),
+						}
+					)
+				)
 				continue
 
-			image = select_request_images(request, resize_shape)
+			image = select_request_images(request, resize_shape, expected_num_views)
 			state = select_request_state(request)
 			image_buf.append(image_to_tensor(image, runtime_pipeline))
 			state_buf.append(state)

@@ -2,8 +2,15 @@ base_dev_dir: /data/peilin/xskill
 hydra.job.config.save_dir: null
 
 save_dir: '${base_dev_dir}/experiment/diffusion_bc_realworld/pick_red_mug'
-project_name: realworld_pick_red_mug_diffusion_bc
+task_name: pick_red_mug
 device: cuda:0
+
+wandb:
+  project: 'xskill_realworld_bc_${task_name}'
+  group: '${task_name}_manual'
+  job_type: policy_train
+  run_name: null
+  tags: ['realworld', 'bc', '${task_name}', 'cam0-cam1-wrist_cam']
 
 num_epochs: 500
 lr: 1e-4
@@ -25,7 +32,7 @@ action_horizon: 8
 proto_horizon: 1
 
 batch_size: 64
-num_workers: 8
+num_workers: 4
 pin_memory: True
 persistent_workers: True
 prefetch_factor: 2
@@ -66,7 +73,7 @@ dataset:
   snap_frames: 100
   mask:
     - '${base_dev_dir}/data/processed/pick_red_mug/robot_mask_40.json'
-  camera_views: ['cam1', 'wrist_cam']
+  camera_views: ['cam0', 'cam1', 'wrist_cam']
   pipeline: ${train_augmentations}
   unnormal_list: ['proto_snap', 'protos']
   verbose: True

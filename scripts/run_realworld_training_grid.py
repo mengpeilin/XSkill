@@ -14,9 +14,6 @@ from datetime import datetime
 from pathlib import Path
 from xskill.common.replay_buffer import ReplayBuffer
 
-from xskill.common.replay_buffer import ReplayBuffer
-
-
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
@@ -356,51 +353,10 @@ def label_outputs_ready(human_proto: Path, robot_proto: Path) -> bool:
     return replay_buffer_ready(human_proto) and replay_buffer_ready(robot_proto)
 
 
-def directory_has_bc_artifacts(path: Path) -> bool:
-    if not path.is_dir():
+def label_stage_succeeded(summary: dict | None) -> bool:
+    if not summary:
         return False
-    return (
-        find_latest_numbered_file(path, "resume_*.pt", "resume_", ".pt") is not None
-        or find_latest_numbered_file(path, "ckpt_*.pt", "ckpt_", ".pt") is not None
-    )
-
-
-def find_existing_bc_run_dir(bc_root: Path, existing_summary: dict | None) -> Path | None:
-    if existing_summary is not None:
-        raw_path = existing_summary.get("bc_run_dir")
-        if raw_path:
-            candidate = Path(raw_path)
-            if directory_has_bc_artifacts(candidate):
-                return candidate
-
-    candidates = [path for path in child_directories(bc_root) if directory_has_bc_artifacts(path)]
-    if not candidates:
-        return None
-    candidates.sort(key=lambda path: path.stat().st_mtime)
-    return candidates[-1]
-
-
-def find_latest_bc_checkpoint(bc_run_dir: Path | None) -> Path | None:
-    if bc_run_dir is None:
-        return None
-
-    latest_resume = find_latest_numbered_file(bc_run_dir, "resume_*.pt", "resume_", ".pt")
-    latest_model = find_latest_numbered_file(bc_run_dir, "ckpt_*.pt", "ckpt_", ".pt")
-
-    if latest_resume is None:
-        return latest_model
-    if latest_model is None:
-        return latest_resume
-
-    resume_epoch = numbered_suffix(latest_resume, "resume_", ".pt")
-    model_epoch = numbered_suffix(latest_model, "ckpt_", ".pt")
-    if resume_epoch is None:
-        return latest_model
-    if model_epoch is None:
-        return latest_resume
-    if resume_epoch >= model_epoch:
-        return latest_resume
-    return latest_model
+    return summary.get("label_status") == "succeeded"
 
 
 def build_commands(
@@ -409,18 +365,18 @@ def build_commands(
     device: str,
     paths: dict,
     skill_resume_checkpoint: Path | None = None,
-    bc_resume_run_dir: Path | None = None,
-    bc_resume_checkpoint: Path | None = None,
 ) -> dict:
     device_cfg = runtime_device_config(device)
     skill_dir = paths["skill_dir"]
     bc_root = paths["bc_root"]
     human_proto = skill_dir / "human_encode_protos" / f"ckpt_{args.skill_ckpt}" / "human.zarr"
     robot_proto = skill_dir / "encode_protos" / f"ckpt_{args.skill_ckpt}" / "robot.zarr"
-    project_name = f"realworld_{job.task}_h{job.human_demos}_r{job.robot_demos}_diffusion_bc"
+    wandb_group = f"{job.task}_h{job.human_demos}_r{job.robot_demos}"
 
     skill_overrides = [
         f"hydra.run.dir={hydra_scalar(skill_dir)}",
+        f"task_name={hydra_scalar(job.task)}",
+        f"wandb.group={hydra_scalar(wandb_group)}",
         f"Trainer.accelerator={device_cfg['skill_accelerator']}",
         f"Trainer.devices={device_cfg['skill_devices']}",
         f"robot_dataset.dataset_paths={hydra_list([job.robot_zarr])}",
@@ -449,7 +405,8 @@ def build_commands(
 
     bc_overrides = [
         f"save_dir={hydra_scalar(bc_root)}",
-        f"project_name={hydra_scalar(project_name)}",
+        f"task_name={hydra_scalar(job.task)}",
+        f"wandb.group={hydra_scalar(wandb_group)}",
         f"device={hydra_scalar(device_cfg['runtime_device'])}",
         f"pretrain_path={hydra_scalar(skill_dir)}",
         f"pretrain_ckpt={args.skill_ckpt}",
@@ -461,10 +418,6 @@ def build_commands(
         bc_overrides.append(f"num_epochs={args.bc_num_epochs}")
     if args.bc_ckpt_frequency is not None:
         bc_overrides.append(f"ckpt_frequency={args.bc_ckpt_frequency}")
-    if bc_resume_run_dir is not None:
-        bc_overrides.append(f"+resume_run_dir={hydra_scalar(bc_resume_run_dir)}")
-    if bc_resume_checkpoint is not None:
-        bc_overrides.append(f"+resume_path={hydra_scalar(bc_resume_checkpoint)}")
 
     return {
         "skill": [args.python, "scripts/skill_discovery.py", *skill_overrides],
@@ -473,8 +426,6 @@ def build_commands(
         "robot_proto": robot_proto,
         "human_proto": human_proto,
         "skill_resume_checkpoint": skill_resume_checkpoint,
-        "bc_resume_run_dir": bc_resume_run_dir,
-        "bc_resume_checkpoint": bc_resume_checkpoint,
     }
 
 
@@ -520,11 +471,6 @@ def run_job(args: argparse.Namespace, job: Job, device: str, semaphore: threadin
         latest_skill_checkpoint = find_latest_skill_checkpoint(paths["skill_dir"])
         skip_skill = target_skill_checkpoint is not None
         skill_resume_checkpoint = None if skip_skill else latest_skill_checkpoint
-        should_resume_bc = existing_summary is None or existing_summary.get("status") != "succeeded"
-        bc_resume_run_dir = find_existing_bc_run_dir(paths["bc_root"], existing_summary) if should_resume_bc else None
-        bc_resume_checkpoint = find_latest_bc_checkpoint(bc_resume_run_dir)
-        if bc_resume_checkpoint is None:
-            bc_resume_run_dir = None
 
         commands = build_commands(
             args,
@@ -532,10 +478,12 @@ def run_job(args: argparse.Namespace, job: Job, device: str, semaphore: threadin
             device,
             paths,
             skill_resume_checkpoint=skill_resume_checkpoint,
-            bc_resume_run_dir=bc_resume_run_dir,
-            bc_resume_checkpoint=bc_resume_checkpoint,
         )
-        skip_label = skip_skill and label_outputs_ready(commands["human_proto"], commands["robot_proto"])
+        skip_label = (
+            skip_skill
+            and label_stage_succeeded(existing_summary)
+            and label_outputs_ready(commands["human_proto"], commands["robot_proto"])
+        )
         summary = {
             "task": job.task,
             "human_demos": job.human_demos,
@@ -549,8 +497,6 @@ def run_job(args: argparse.Namespace, job: Job, device: str, semaphore: threadin
             if target_skill_checkpoint is not None
             else str(skill_checkpoint_candidates(paths["skill_dir"], args.skill_ckpt)[0]),
             "skill_resume_checkpoint": str(skill_resume_checkpoint) if skill_resume_checkpoint is not None else None,
-            "bc_resume_run_dir": str(bc_resume_run_dir) if bc_resume_run_dir is not None else None,
-            "bc_resume_checkpoint": str(bc_resume_checkpoint) if bc_resume_checkpoint is not None else None,
             "status": "running",
             "started_at": timestamp(),
             "commands": {
@@ -618,14 +564,8 @@ def run_job(args: argparse.Namespace, job: Job, device: str, semaphore: threadin
                 write_json(paths["summary_path"], summary)
 
             bc_before = child_directories(paths["bc_root"])
-            if bc_resume_checkpoint is not None:
-                summary["bc_status"] = "resuming"
-                summary["bc_resume_checkpoint"] = str(bc_resume_checkpoint)
-                summary["bc_resume_run_dir"] = str(bc_resume_run_dir)
-                write_json(paths["summary_path"], summary)
-                log(f"[resume-bc] {job.name} from {bc_resume_checkpoint.name}", print_lock)
             run_stage(commands["bc"], paths["logs_dir"] / "bc.log", env)
-            bc_run_dir = bc_resume_run_dir or detect_new_directory(paths["bc_root"], bc_before)
+            bc_run_dir = detect_new_directory(paths["bc_root"], bc_before)
             summary["bc_run_dir"] = str(bc_run_dir) if bc_run_dir is not None else None
             summary["bc_status"] = "succeeded"
             summary["status"] = "succeeded"

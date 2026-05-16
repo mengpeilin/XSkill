@@ -4,6 +4,15 @@ hydra:
   run:
     dir: '${base_dev_dir}/experiment/pretrain_pick_mug/${now:%Y-%m-%d_%H-%M-%S}'
 
+task_name: pick_red_mug
+
+wandb:
+  project: 'xskill_realworld_skill_discovery_${task_name}'
+  group: '${task_name}_manual'
+  job_type: skill_discovery
+  run_name: null
+  tags: ['realworld', 'skill_discovery', '${task_name}']
+
 batch_size: 20
 num_workers: 12
 pin_memory: True

@@ -25,6 +25,10 @@ except ImportError:
 
 
 HF_PREFIX = "https://huggingface.co/datasets/"
+DEFAULT_CAMERA_SPECS = (
+    "cam1=observation.images.cam_azure_kinect_left.color",
+)
+REQUIRED_HUMAN_CAMERA_VIEWS = ("cam1",)
 
 
 def parse_args():
@@ -33,15 +37,47 @@ def parse_args():
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--output-split", type=str, default="human")
     parser.add_argument(
-        "--camera-key",
-        type=str,
-        default="observation.images.cam_azure_kinect_left.color",
+        "--camera",
+        dest="camera_specs",
+        action="append",
+        default=None,
+        help=(
+            "Camera mapping as <view>=<video_key>. Can be repeated. "
+            "Defaults to cam1=observation.images.cam_azure_kinect_left.color."
+        ),
     )
     parser.add_argument("--cache-dir", type=Path, default=None)
     parser.add_argument("--limit-per-dataset", type=int, default=None)
     parser.add_argument("--skip-episodes-file", type=Path, default=None)
     parser.add_argument("--overwrite", action="store_true")
     return parser.parse_args()
+
+
+def parse_camera_specs(camera_specs: list[str] | None):
+    resolved_specs = list(DEFAULT_CAMERA_SPECS if camera_specs is None else camera_specs)
+    camera_mappings = []
+    seen_views = set()
+    for spec in resolved_specs:
+        if "=" not in spec:
+            raise ValueError(f"Camera spec must be <view>=<video_key>, got {spec!r}.")
+        view_name, video_key = spec.split("=", maxsplit=1)
+        view_name = view_name.strip()
+        video_key = video_key.strip()
+        if not view_name or not video_key:
+            raise ValueError(f"Camera spec must be <view>=<video_key>, got {spec!r}.")
+        if view_name in seen_views:
+            raise ValueError(f"Duplicate camera view {view_name!r} in --camera.")
+        seen_views.add(view_name)
+        camera_mappings.append((view_name, video_key))
+    if not camera_mappings:
+        raise ValueError("At least one camera mapping is required.")
+    camera_views = tuple(view_name for view_name, _ in camera_mappings)
+    if camera_views != REQUIRED_HUMAN_CAMERA_VIEWS:
+        raise ValueError(
+            "Human demo conversion requires camera mappings for "
+            f"{REQUIRED_HUMAN_CAMERA_VIEWS}, got {camera_views}."
+        )
+    return camera_mappings
 
 
 def normalize_hf_source(source: str):
@@ -140,6 +176,7 @@ def decode_video(video_path: Path):
 
 def main():
     args = parse_args()
+    camera_mappings = parse_camera_specs(args.camera_specs)
     output_path = args.output_root / f"{args.output_split}.zarr"
     replay_buffer = prepare_replay_buffer(output_path, overwrite=args.overwrite)
     skip_mapping = load_skip_mapping(args.skip_episodes_file)
@@ -156,26 +193,28 @@ def main():
         episode_indices = [index for index in episode_indices if index not in skip_set]
 
         for episode_index in tqdm(episode_indices, desc=f"Converting {dataset_name}"):
-            video_path = build_pattern_path(
-                dataset_root,
-                info["video_path"],
-                episode_index,
-                chunk_size=int(info["chunks_size"]),
-                video_key=args.camera_key,
-            )
-            if not video_path.is_file():
-                raise FileNotFoundError(f"Missing episode video file: {video_path}")
+            episode_payload = {}
+            for view_name, video_key in camera_mappings:
+                video_path = build_pattern_path(
+                    dataset_root,
+                    info["video_path"],
+                    episode_index,
+                    chunk_size=int(info["chunks_size"]),
+                    video_key=video_key,
+                )
+                if not video_path.is_file():
+                    raise FileNotFoundError(f"Missing episode video file: {video_path}")
+                episode_payload[f"camera_{view_name}"] = decode_video(video_path)
 
-            replay_buffer.add_episode(
-                {"camera_cam1": decode_video(video_path)},
-                compressors="disk",
-            )
+            replay_buffer.add_episode(episode_payload, compressors="disk")
             source_episode_indices.append(int(episode_index))
 
+    camera_views = [view_name for view_name, _ in camera_mappings]
+    max_view_len = max(len(view_name) for view_name in camera_views)
     replay_buffer.update_meta(
         {
-            "camera_views": np.asarray(["cam1"], dtype="<U4"),
-            "camera_file_stems": np.asarray(["cam1"], dtype="<U4"),
+            "camera_views": np.asarray(camera_views, dtype=f"<U{max_view_len}"),
+            "camera_file_stems": np.asarray(camera_views, dtype=f"<U{max_view_len}"),
             "episode_indices": np.asarray(source_episode_indices, dtype=np.int64),
         }
     )

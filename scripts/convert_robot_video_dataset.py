@@ -144,11 +144,14 @@ def main():
     source_episode_ids = []
     for episode_dir in tqdm(episode_dirs, desc="Converting robot episodes"):
         trajectory_path = episode_dir / "trajectory.npz"
+        cam0_path = episode_dir / "cam0.mp4"
         cam1_path = episode_dir / "cam1.mp4"
         wrist_path = episode_dir / "wrist_cam.mp4"
 
         if not trajectory_path.is_file():
             raise FileNotFoundError(f"Missing trajectory file: {trajectory_path}")
+        if not cam0_path.is_file():
+            raise FileNotFoundError(f"Missing camera file: {cam0_path}")
         if not cam1_path.is_file():
             raise FileNotFoundError(f"Missing camera file: {cam1_path}")
         if not wrist_path.is_file():
@@ -166,6 +169,7 @@ def main():
             {
                 "obs": obs,
                 "actions": actions,
+                "camera_cam0": decode_video(cam0_path, len(obs)),
                 "camera_cam1": decode_video(cam1_path, len(obs)),
                 "camera_wrist_cam": decode_video(wrist_path, len(obs)),
             },
@@ -175,8 +179,8 @@ def main():
 
     replay_buffer.update_meta(
         {
-            "camera_views": np.asarray(["cam1", "wrist_cam"], dtype="<U9"),
-            "camera_file_stems": np.asarray(["cam1", "wrist_cam"], dtype="<U9"),
+            "camera_views": np.asarray(["cam0", "cam1", "wrist_cam"], dtype="<U9"),
+            "camera_file_stems": np.asarray(["cam0", "cam1", "wrist_cam"], dtype="<U9"),
             "episode_indices": np.asarray(source_episode_ids, dtype=np.int64),
         }
     )

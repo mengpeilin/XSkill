@@ -36,9 +36,7 @@ To set up the simulation dataset:
    ```
 2. Set the `base_dev_dir` config/simulation/create_kitchen_datase.yaml to your working directory. Run the following command to generate the cross-embodiment kitchen data and the training mask:
     ```bash
-    cd scripts
-    python create_all_kitchen_dataset.py
-    python extract_kitchen_info.py
+   Legacy simulation data-generation helpers were removed from `scripts/` because they were not part of the active maintained pipeline.
     ```
 
 ## 🌐 Real World Dataset
@@ -52,6 +50,7 @@ The real-world pipeline now uses zarr files end to end.
      --output-root data/processed/pick_red_mug \
      --output-split human
    ```
+    By default this stores the left Azure Kinect stream as `camera_cam1`.
 2. Create a robot demo zarr from recorded robot episode folders:
    ```bash
    python scripts/convert_robot_video_dataset.py \
@@ -60,7 +59,7 @@ The real-world pipeline now uses zarr files end to end.
      --output-split robot
    ```
 
-The robot zarr stores `camera_cam1`, `camera_wrist_cam`, `obs`, and `actions`.
+The robot zarr stores `camera_cam0`, `camera_cam1`, `camera_wrist_cam`, `obs`, and `actions`.
 The `obs` and `actions` arrays are always `xyz + rotvec + gripper_width`.
 ## 🚴‍♂️ Training
 
@@ -72,7 +71,7 @@ The `obs` and `actions` arrays are always `xyz + rotvec + gripper_width`.
    ```
 2. Label the dataset using the learned prototype by the trained model. 
     ```bash
-    python scripts/label_sim_kitchen_dataset.py
+   The legacy simulation labeling helper was removed from `scripts/` because it was not part of the active maintained pipeline.
     ```
 3. Execute the skill transfer and composing script. Replace the pretrain_path and pretrain_ckpt in cfg/simulation/skill_transfer_composing.yaml
     ```

@@ -13,6 +13,7 @@ from xskill.common.replay_buffer import ReplayBuffer
 from xskill.utility.transform import get_transform_pipeline
 
 normalize_threshold = 5e-2
+REQUIRED_BC_CAMERA_VIEWS = ["cam0", "cam1", "wrist_cam"]
 
 
 def create_sample_indices(
@@ -128,7 +129,7 @@ class KitchenBCDataset(torch.utils.data.Dataset):
         self.one_hot_prototype = one_hot_prototype
         self.prototype_snap = prototype_snap
         self.snap_frames = snap_frames
-        self.camera_views = list(camera_views) if camera_views is not None else ["cam1", "wrist_cam"]
+        self.camera_views = list(camera_views) if camera_views is not None else list(REQUIRED_BC_CAMERA_VIEWS)
         self.unnormal_list = list(unnormal_list or [])
         self.pipeline = self._normalize_pipeline(pipeline)
         self.verbose = verbose
@@ -137,10 +138,9 @@ class KitchenBCDataset(torch.utils.data.Dataset):
         self.obs_horizon = obs_horizon
         self.action_horizon = action_horizon
         self.proto_horizon = obs_horizon if proto_horizon is None else proto_horizon
-
-        if self.camera_views != ["cam1", "wrist_cam"]:
+        if self.camera_views != REQUIRED_BC_CAMERA_VIEWS:
             raise ValueError(
-                f"KitchenBCDataset requires camera_views=['cam1', 'wrist_cam'], got {self.camera_views}."
+                f"KitchenBCDataset requires camera_views={REQUIRED_BC_CAMERA_VIEWS}, got {self.camera_views}."
             )
 
         self.set_seed(seed)

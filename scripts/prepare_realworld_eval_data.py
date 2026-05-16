@@ -48,20 +48,20 @@ TASK_SPECS = {
             {"dataset": "xiaochyVera/insert_donut_human_3"},
         ],
     },
-    # "pick_place_red_mug": {
-    #     "robot_input": "data/pick_place_red_mug",
-    #     "human_total": 196,
-    #     "robot_total": 100,
-    #     "human_sources": [
-    #         {"dataset": "Kovavavvavava/pick_place_red_mug_20260327_2"},
-    #         {"dataset": "Kovavavvavava/pick_place_red_mug_20260327_1"},
-    #         {"dataset": "xiaochyVera/pick_red_mug_human", "skip_episodes": [6, 7]},
-    #         {"dataset": "xiaochyVera/pick_red_mug_human_1", "skip_episodes": [8]},
-    #         {"dataset": "xiaochyVera/pick_red_mug_human_2", "skip_episodes": [4]},
-    #         {"dataset": "xiaochyVera/pick_red_mug_human_3"},
-    #         {"dataset": "xiaochyVera/pick_red_mug_human_4"},
-    #     ],
-    # },
+    "pick_place_red_mug": {
+         "robot_input": "data/pick_place_red_mug",
+         "human_total": 196,
+         "robot_total": 100,
+         "human_sources": [
+             {"dataset": "Kovavavvavava/pick_place_red_mug_20260327_2"},
+             {"dataset": "Kovavavvavava/pick_place_red_mug_20260327_1"},
+             {"dataset": "xiaochyVera/pick_red_mug_human", "skip_episodes": [6, 7]},
+             {"dataset": "xiaochyVera/pick_red_mug_human_1", "skip_episodes": [8]},
+             {"dataset": "xiaochyVera/pick_red_mug_human_2", "skip_episodes": [4]},
+             {"dataset": "xiaochyVera/pick_red_mug_human_3"},
+             {"dataset": "xiaochyVera/pick_red_mug_human_4"},
+         ],
+     },
     "pick_place_toys": {
         "robot_input": "data/pick_place_toys",
         "human_total": 288,
@@ -177,10 +177,16 @@ def convert_human_zarr(task_name, prepared_sources, output_path, overwrite):
 
     replay_buffer = prepare_human_replay_buffer(output_path, overwrite=overwrite)
     manifest_entries = []
+    MAX_HUMAN = 200
+
     for source in prepared_sources:
+        if len(manifest_entries) >= MAX_HUMAN:
+            break
         dataset_name = source["dataset"]
         info = source["info"]
         for episode_index in tqdm(source["episode_indices"], desc=f"[{task_name}] {dataset_name}"):
+            if len(manifest_entries) >= MAX_HUMAN:
+                break
             video_path = build_pattern_path(
                 source["dataset_root"],
                 info["video_path"],

@@ -17,7 +17,7 @@ lr: 1e-4
 weight_decay: 1e-6
 ckpt_frequency: 10
 gradient_accumulation_steps: 1
-fused_optimizer: True
+fused_optimizer: False
 mixed_precision: bf16
 compile_model: True
 compile_mode: reduce-overhead

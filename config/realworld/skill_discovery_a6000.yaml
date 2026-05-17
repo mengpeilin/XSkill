@@ -14,17 +14,17 @@ wandb:
   tags: ['realworld', 'skill_discovery', '${task_name}']
 
 batch_size: 20
-num_workers: 12
+num_workers: 4
 pin_memory: True
 persistent_workers: True
 drop_last: True
-prefetch_factor: 4
+prefetch_factor: 8
 matmul_precision: high
 allow_tf32: True
 compile_model: True
-compile_mode: reduce-overhead
+compile_mode: default
 
-resize_shape: [160, 120]
+resize_shape: [320, 240]
 repeat_shorter_dataset: True
 
 robot_dataset:
@@ -36,10 +36,10 @@ robot_dataset:
   frame_sampler:
     _target_: xskill.dataset.frame_samplers.ZarrFrequencyUniformSampler
     offset: 0
-    num_frames: 100
+    num_frames: 180
     frequency: 3
   slide: 8
-  max_get_threads: 6
+  max_get_threads: 3
   resize_shape: ${resize_shape}
 
 human_dataset:

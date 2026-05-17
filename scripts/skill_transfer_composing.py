@@ -111,7 +111,7 @@ def build_wandb_init_kwargs(cfg: DictConfig, save_dir: str) -> dict:
 @hydra.main(
     version_base=None,
     config_path="../config/realworld",
-    config_name="skill_transfer_composing_pick_mug",
+    config_name="skill_transfer_composing_pick_mug_a6000",
 )
 def train_diffusion_bc(cfg: DictConfig):
     configure_runtime_speedups(cfg)

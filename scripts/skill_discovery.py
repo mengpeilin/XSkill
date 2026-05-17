@@ -66,7 +66,7 @@ def build_wandb_init_kwargs(cfg: DictConfig, output_dir: str) -> dict:
 
 @hydra.main(version_base=None,
             config_path="../config/realworld",
-            config_name="skill_discovery")
+            config_name="skill_discovery_a6000")
 def pretrain(cfg: DictConfig):
     configure_runtime_speedups(cfg)
     output_dir = HydraConfig.get().runtime.output_dir

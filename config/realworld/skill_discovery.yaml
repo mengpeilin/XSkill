@@ -7,11 +7,11 @@ hydra:
 task_name: pick_red_mug
 
 wandb:
-  project: 'xskill_realworld_skill_discovery_${task_name}'
-  group: '${task_name}_manual'
+  project: 'xskill_simulation_skill_discovery_${task_name}'
+  group: null
   job_type: skill_discovery
-  run_name: null
-  tags: ['realworld', 'skill_discovery', '${task_name}']
+  run_name: '${wandb.group}__skill_discovery'
+  tags: ['simulation', 'skill_discovery', '${task_name}']
 
 batch_size: 20
 num_workers: 4
@@ -36,7 +36,7 @@ robot_dataset:
   frame_sampler:
     _target_: xskill.dataset.frame_samplers.ZarrFrequencyUniformSampler
     offset: 0
-    num_frames: 100
+    num_frames: 180
     frequency: 3
   slide: 8
   max_get_threads: 3

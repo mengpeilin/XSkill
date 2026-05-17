@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+import time
 import argparse
 import json
 import os
@@ -615,7 +615,10 @@ def main() -> int:
     results = []
     with ThreadPoolExecutor(max_workers=min(len(jobs), len(device_slots))) as executor:
         future_to_job = {}
-        for job in jobs:
+        for idx, job in enumerate(jobs):
+            if idx > 0:
+                print(f"\n[Sleep] Waiting 120 seconds before starting the next job...", flush=True)
+                time.sleep(120)
             device = device_pool.get()
 
             def task_wrapper(current_job: Job, current_device: str):

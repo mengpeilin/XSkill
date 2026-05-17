@@ -1,16 +1,16 @@
 base_dev_dir: /data/peilin/xskill
 hydra.job.config.save_dir: null
 
-save_dir: '${base_dev_dir}/experiment/diffusion_bc_realworld/pick_red_mug'
+save_dir: '${base_dev_dir}/experiment/diffusion_bc_simulation/pick_red_mug'
 task_name: pick_red_mug
 device: cuda:0
 
 wandb:
-  project: 'xskill_realworld_bc_${task_name}'
-  group: '${task_name}_manual'
+  project: 'xskill_simulation_bc_${task_name}'
+  group: null
   job_type: policy_train
-  run_name: null
-  tags: ['realworld', 'bc', '${task_name}', 'cam0-cam1-wrist_cam']
+  run_name: '${wandb.group}__bc'
+  tags: ['simulation', 'bc', '${task_name}']
 
 num_epochs: 500
 lr: 1e-4

@@ -2,25 +2,25 @@ base_dev_dir: /data/peilin/xskill
 
 hydra:
   run:
-    dir: '${exp_path}/label_real/${now:%Y-%m-%d_%H-%M-%S}'
+    dir: '${exp_path}/label'
 
 exp_path: null
-ckpt: 499
-device: cuda:0
-resize_shape: [160, 120]
+ckpt: null
+device: null
+resize_shape: [320, 230]
 augmentations: ['center_crop_110_146', 'normalize']
 
 datasets:
   human:
-    data_path: '${base_dev_dir}/data/processed/pick_red_mug/human.zarr'
-    save_path: '${exp_path}/human_encode_protos/ckpt_${ckpt}/human.zarr'
+    data_path: 'TBD'
+    save_path: 'TBD'
     camera_view: cam1
     mask_path: null
     name: null
     resize_shape: null
   robot:
-    data_path: '${base_dev_dir}/data/processed/pick_red_mug/robot.zarr'
-    save_path: '${exp_path}/encode_protos/ckpt_${ckpt}/robot.zarr'
+    data_path: 'TBD'
+    save_path: 'TBD'
     camera_view: cam1
     mask_path: null
     name: null

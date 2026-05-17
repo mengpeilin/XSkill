@@ -9,13 +9,6 @@ from torch import nn
 
 class Model(pl.LightningModule):
 
-    _LEGACY_COMPILED_PREFIX_MAP = (
-        ("_compiled_encoder_q._orig_mod.", "encoder_q."),
-        ("_compiled_skill_prior._orig_mod.", "skill_prior."),
-        ("_compiled_encoder_q.", "encoder_q."),
-        ("_compiled_skill_prior.", "skill_prior."),
-    )
-
     def __init__(
         self,
         encoder_q,
@@ -41,8 +34,6 @@ class Model(pl.LightningModule):
         positive_window=1,
         negative_window=10,
         pretrain_pipeline=None,
-        compile_model=False,
-        compile_mode="reduce-overhead",
     ):
 
         super(Model, self).__init__()
@@ -79,45 +70,6 @@ class Model(pl.LightningModule):
 
 
         self.pretrain_pipeline = pretrain_pipeline
-        self.compile_model = compile_model
-        self.compile_mode = compile_mode
-        self._compiled_encoder_q = None
-        self._compiled_skill_prior = None
-
-    def on_train_start(self):
-        if not self.compile_model:
-            return
-        if self.device.type != "cuda" or not hasattr(torch, "compile"):
-            return
-        self.__dict__["_compiled_encoder_q"] = torch.compile(self.encoder_q, mode=self.compile_mode)
-        if self.skill_prior is not None:
-            self.__dict__["_compiled_skill_prior"] = torch.compile(self.skill_prior, mode=self.compile_mode)
-
-    @classmethod
-    def _normalize_legacy_compiled_state_dict(cls, state_dict):
-        normalized_state_dict = {}
-        for key, value in state_dict.items():
-            normalized_key = key
-            for legacy_prefix, current_prefix in cls._LEGACY_COMPILED_PREFIX_MAP:
-                if key.startswith(legacy_prefix):
-                    normalized_key = current_prefix + key[len(legacy_prefix):]
-                    break
-            normalized_state_dict.setdefault(normalized_key, value)
-        return normalized_state_dict
-
-    def load_state_dict(self, state_dict, strict=True):
-        return super().load_state_dict(
-            self._normalize_legacy_compiled_state_dict(state_dict),
-            strict=strict,
-        )
-
-    def _encoder_q_forward(self, *args, **kwargs):
-        encoder = self._compiled_encoder_q if self._compiled_encoder_q is not None else self.encoder_q
-        return encoder(*args, **kwargs)
-
-    def _skill_prior_forward(self, *args, **kwargs):
-        skill_prior = self._compiled_skill_prior if self._compiled_skill_prior is not None else self.skill_prior
-        return skill_prior(*args, **kwargs)
 
     # @profile
     def forward(self, im_q, bbox_q, im_k=None, bbox_k=None):
@@ -129,8 +81,8 @@ class Model(pl.LightningModule):
             logits, targets
         """
         # vision backbone -> projection [normalized] -> prototype
-        zc_q = self._encoder_q_forward(im_q[:, self.stack_frames - 1:], None)  # z: NxC
-        zc_k = self._encoder_q_forward(im_k[:, self.stack_frames - 1:], None)  # z: NxC
+        zc_q = self.encoder_q(im_q[:, self.stack_frames - 1:], None)  # z: NxC
+        zc_k = self.encoder_q(im_k[:, self.stack_frames - 1:], None)  # z: NxC
 
         return zc_q, zc_k
 
@@ -139,7 +91,7 @@ class Model(pl.LightningModule):
         target = torch.softmax(zc_q.detach() / self.T, dim=1)
         # all in one: (bxTxOx4)-> (bxTxf) -> proto logits
         # spatial attention -> temporal attention
-        z_logits = self._skill_prior_forward(im_q[:, :self.stack_frames], None)
+        z_logits = self.skill_prior(im_q[:, :self.stack_frames], None)
         criterion = nn.CrossEntropyLoss()
         loss = criterion(z_logits, target)
 

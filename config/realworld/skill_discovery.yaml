@@ -4,16 +4,15 @@ hydra:
   run:
     dir: '${base_dev_dir}/experiment/pretrain_pick_mug/${now:%Y-%m-%d_%H-%M-%S}'
 
+wandb:
+  project: 'TBD'
+  run: 'TBD'
+
 batch_size: 20
-num_workers: 8
-pin_memory: True
-persistent_workers: True
+num_workers: 4
+pin_memory: False
+persistent_workers: False
 drop_last: True
-prefetch_factor: 2
-matmul_precision: high
-allow_tf32: True
-compile_model: True
-compile_mode: reduce-overhead
 
 resize_shape: [160, 120]
 repeat_shorter_dataset: True
@@ -56,7 +55,6 @@ Trainer:
   max_epochs: 500
   enable_progress_bar: False
   log_every_n_steps: 100
-  precision: bf16-mixed
 
 n_layer: 8
 
@@ -75,8 +73,6 @@ Model:
   time_augment: True
   swav_loss_coef: 0.5
   cluster_loss_coef: 1
-  compile_model: ${compile_model}
-  compile_mode: ${compile_mode}
   lr: 1e-4
   skill_prior_encoder: null
   use_lr_scheduler: False

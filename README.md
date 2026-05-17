@@ -61,6 +61,12 @@ The real-world pipeline now uses zarr files end to end.
 
 The robot zarr stores `camera_cam0`, `camera_cam1`, `camera_wrist_cam`, `obs`, and `actions`.
 The `obs` and `actions` arrays are always `xyz + rotvec + gripper_width`.
+
+For the 15 fps real-world human plus teleoperated robot setup, use the dedicated prep script:
+```bash
+python scripts/prepare_realworld_teleop_eval_data.py --tasks pick_place_red_mug stack_bowls
+```
+This writes task manifests under `zarr/realworld_teleop_15fps/` so they stay separate from the existing 30 fps pipeline. Use `--manifest-root zarr/realworld_teleop_15fps` when launching `scripts/run_realworld_training_grid.py` against these outputs.
 ## 🚴‍♂️ Training
 
 ### Simulation

@@ -86,7 +86,11 @@ def normalize_hf_source(source: str):
     return source.strip("/")
 
 
-def resolve_dataset_root(source: str, cache_dir: Path | None):
+def resolve_dataset_root(
+    source: str,
+    cache_dir: Path | None,
+    allow_patterns: list[str] | None = None,
+):
     local_path = Path(source).expanduser()
     if local_path.exists():
         return local_path.resolve()
@@ -98,7 +102,7 @@ def resolve_dataset_root(source: str, cache_dir: Path | None):
         repo_id=repo_id,
         repo_type="dataset",
         cache_dir=str(cache_dir) if cache_dir is not None else None,
-        allow_patterns=["meta/*", "videos/*"],
+        allow_patterns=allow_patterns or ["meta/*", "videos/*"],
     )
     return Path(download_path)
 

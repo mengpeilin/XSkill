@@ -34,10 +34,9 @@ except ImportError:
     def tqdm(iterable, **kwargs):
         return iterable
 
-
-DEFAULT_CAMERA_KEY = "observation.images.cam_azure_kinect_left.color"
 DEFAULT_HUMAN_COUNTS = [40, 70, 100, 200]
 DEFAULT_ROBOT_COUNTS = [5, 40]
+DEFAULT_HUMAN_CAMERA_KEY = "observation.images.cam_azure_kinect_left.color"
 
 TASK_SPECS = {
     "insert_donut": {
@@ -46,23 +45,23 @@ TASK_SPECS = {
         "robot_total": 200,
         "human_sources": [
             {"dataset": "xiaochyVera/insert_donut_human_2"},
-            {"dataset": "xiaochyVera/insert_donut_human_3"},
+            {"dataset": "xiaochyVera/insert_donut_human_3", "skip_episodes": [96]},
         ],
     },
-    # "pick_place_red_mug": {
-    #     "robot_input": "data/pick_place_red_mug",
-    #     "human_total": 196,
-    #     "robot_total": 100,
-    #     "human_sources": [
-    #         {"dataset": "Kovavavvavava/pick_place_red_mug_20260327_2"},
-    #         {"dataset": "Kovavavvavava/pick_place_red_mug_20260327_1"},
-    #         {"dataset": "xiaochyVera/pick_red_mug_human", "skip_episodes": [6, 7]},
-    #         {"dataset": "xiaochyVera/pick_red_mug_human_1", "skip_episodes": [8]},
-    #         {"dataset": "xiaochyVera/pick_red_mug_human_2", "skip_episodes": [4]},
-    #         {"dataset": "xiaochyVera/pick_red_mug_human_3"},
-    #         {"dataset": "xiaochyVera/pick_red_mug_human_4"},
-    #     ],
-    # },
+    "pick_place_red_mug": {
+         "robot_input": "data/pick_place_red_mug",
+         "human_total": 196,
+         "robot_total": 100,
+         "human_sources": [
+             {"dataset": "Kovavavvavava/pick_place_red_mug_20260327_2"},
+             {"dataset": "Kovavavvavava/pick_place_red_mug_20260327_1"},
+             {"dataset": "xiaochyVera/pick_red_mug_human", "skip_episodes": [6, 7]},
+             {"dataset": "xiaochyVera/pick_red_mug_human_1", "skip_episodes": [8]},
+             {"dataset": "xiaochyVera/pick_red_mug_human_2", "skip_episodes": [4]},
+             {"dataset": "xiaochyVera/pick_red_mug_human_3"},
+             {"dataset": "xiaochyVera/pick_red_mug_human_4"},
+         ],
+     },
     "pick_place_toys": {
         "robot_input": "data/pick_place_toys",
         "human_total": 288,
@@ -146,7 +145,6 @@ def build_human_sources(task_name, task_spec, cache_dir):
                 "dataset": dataset_name,
                 "dataset_root": dataset_root,
                 "info": info,
-                "camera_key": source_spec.get("camera_key", DEFAULT_CAMERA_KEY),
                 "skip_episodes": skip_episodes,
                 "episode_indices": keep_episodes,
             }
@@ -179,20 +177,29 @@ def convert_human_zarr(task_name, prepared_sources, output_path, overwrite):
 
     replay_buffer = prepare_human_replay_buffer(output_path, overwrite=overwrite)
     manifest_entries = []
+    MAX_HUMAN = 200
+
     for source in prepared_sources:
+        if len(manifest_entries) >= MAX_HUMAN:
+            break
         dataset_name = source["dataset"]
         info = source["info"]
         for episode_index in tqdm(source["episode_indices"], desc=f"[{task_name}] {dataset_name}"):
+            if len(manifest_entries) >= MAX_HUMAN:
+                break
             video_path = build_pattern_path(
                 source["dataset_root"],
                 info["video_path"],
                 episode_index,
                 chunk_size=int(info["chunks_size"]),
-                video_key=source["camera_key"],
+                video_key=DEFAULT_HUMAN_CAMERA_KEY,
             )
             if not video_path.is_file():
                 raise FileNotFoundError(f"Missing human demo video {video_path}")
-            replay_buffer.add_episode({"camera_cam1": decode_human_video(video_path)}, compressors="disk")
+            replay_buffer.add_episode(
+                {"camera_cam1": decode_human_video(video_path)},
+                compressors="disk",
+            )
             manifest_entries.append({"dataset": dataset_name, "source_episode": int(episode_index)})
 
     replay_buffer.update_meta(
@@ -218,11 +225,14 @@ def convert_robot_zarr(task_name, episode_dirs, output_path, overwrite):
     source_episode_ids = []
     for episode_dir in tqdm(episode_dirs, desc=f"[{task_name}] robot"):
         trajectory_path = episode_dir / "trajectory.npz"
+        cam0_path = episode_dir / "cam0.mp4"
         cam1_path = episode_dir / "cam1.mp4"
         wrist_path = episode_dir / "wrist_cam.mp4"
 
         if not trajectory_path.is_file():
             raise FileNotFoundError(f"Missing trajectory file {trajectory_path}")
+        if not cam0_path.is_file():
+            raise FileNotFoundError(f"Missing camera file {cam0_path}")
         if not cam1_path.is_file():
             raise FileNotFoundError(f"Missing camera file {cam1_path}")
         if not wrist_path.is_file():
@@ -239,6 +249,7 @@ def convert_robot_zarr(task_name, episode_dirs, output_path, overwrite):
             {
                 "obs": obs,
                 "actions": actions,
+                "camera_cam0": decode_robot_video(cam0_path, len(obs)),
                 "camera_cam1": decode_robot_video(cam1_path, len(obs)),
                 "camera_wrist_cam": decode_robot_video(wrist_path, len(obs)),
             },
@@ -248,8 +259,8 @@ def convert_robot_zarr(task_name, episode_dirs, output_path, overwrite):
 
     replay_buffer.update_meta(
         {
-            "camera_views": np.asarray(["cam1", "wrist_cam"], dtype="<U9"),
-            "camera_file_stems": np.asarray(["cam1", "wrist_cam"], dtype="<U9"),
+            "camera_views": np.asarray(["cam0", "cam1", "wrist_cam"], dtype="<U9"),
+            "camera_file_stems": np.asarray(["cam0", "cam1", "wrist_cam"], dtype="<U9"),
             "episode_indices": np.asarray(source_episode_ids, dtype=np.int64),
         }
     )
@@ -322,6 +333,7 @@ def run_task(task_name, task_spec, args, output_root):
     else:
         prepared_human_sources = build_human_sources(task_name, task_spec, args.cache_dir)
         robot_input_dir, robot_episode_dirs = build_robot_episodes(task_name, task_spec)
+        robot_episode_dirs = robot_episode_dirs[:40]
         human_total = sum(len(source["episode_indices"]) for source in prepared_human_sources)
         robot_total = len(robot_episode_dirs)
 

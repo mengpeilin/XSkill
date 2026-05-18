@@ -52,7 +52,7 @@ Trainer:
   devices: null
   max_epochs: 500
   enable_progress_bar: False
-  log_every_n_steps: 100
+  log_every_n_steps: 5
 
 n_layer: 8
 

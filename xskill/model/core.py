@@ -3,7 +3,6 @@ import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import wandb
 from torch import nn
 
 
@@ -317,25 +316,22 @@ class Model(pl.LightningModule):
         s_opt.zero_grad()
         self.manual_backward(skill_prior_loss)
         s_opt.step()
-        with torch.no_grad():
-            wandb.log({
-                'encoder_loss':
-                encoder_loss,
-                'repre_loss':
-                rep_loss,
-                "cluster_loss":
-                cluster_loss,
-                'epoch':
-                self.trainer.current_epoch,
-                'skill_prior_loss':
-                skill_prior_loss,
-                'encoder_lr':
-                e_sch.get_lr()[0] if self.use_lr_scheduler else self.lr,
-                'prior_lr':
-                s_sch.get_lr()[0] if self.use_lr_scheduler else self.lr,
-                'T':
-                self.T
-            })
+        metrics = {
+            "encoder_loss": encoder_loss.detach(),
+            "repre_loss": rep_loss.detach(),
+            "cluster_loss": cluster_loss.detach(),
+            "skill_prior_loss": skill_prior_loss.detach(),
+            "encoder_lr": e_sch.get_lr()[0] if self.use_lr_scheduler else self.lr,
+            "prior_lr": s_sch.get_lr()[0] if self.use_lr_scheduler else self.lr,
+            "T": self.T,
+        }
+        self.log_dict(
+            metrics,
+            on_step=True,
+            on_epoch=True,
+            logger=True,
+            batch_size=batch_size,
+        )
 
     # @profile
     @torch.no_grad()

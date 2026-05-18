@@ -1,9 +1,13 @@
 base_dev_dir: /data/peilin/xskill
-hydra.job.config.save_dir: null
+hydra:
+  run:
+    dir: 'TBD'
 
-save_dir: '${base_dev_dir}/experiment/diffusion_bc_realworld/pick_red_mug'
-project_name: realworld_pick_red_mug_diffusion_bc
-device: cuda:0
+save_dir: 'TBD'
+wandb:
+  project: 'TBD'
+  run: 'TBD'
+device: null
 
 num_epochs: 500
 lr: 1e-4
@@ -18,7 +22,7 @@ action_horizon: 8
 proto_horizon: 1
 
 batch_size: 64
-num_workers: 8
+num_workers: 4
 pin_memory: True
 persistent_workers: True
 
@@ -30,8 +34,8 @@ bc_resize: [320, 240]
 train_augmentations: ['random_crop_260_288', 'normalize']
 inference_augmentations: ['center_crop_260_288', 'normalize']
 
-pretrain_path: 'should be replaced'
-pretrain_ckpt: -1
+pretrain_path: 'TBD'
+pretrain_ckpt: null
 
 raw_representation: True
 prototype: False
@@ -43,9 +47,9 @@ dataset:
   _target_: xskill.dataset.diffusion_bc_dataset.KitchenBCDataset
   resize_shape: ${bc_resize}
   data_dirs:
-    - '${base_dev_dir}/data/processed/pick_red_mug/robot.zarr'
+    - 'TBD'
   proto_dirs:
-    - '${pretrain_path}/encode_protos/ckpt_${pretrain_ckpt}/robot.zarr'
+    - 'TBD'
   pred_horizon: ${pred_horizon}
   obs_horizon: ${obs_horizon}
   action_horizon: ${action_horizon}

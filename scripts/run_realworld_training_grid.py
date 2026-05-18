@@ -32,10 +32,10 @@ def default_output_root() -> Path:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--tasks", nargs="+", default=["all"])
-    parser.add_argument("--human-counts", nargs="+", type=int, default=[40, 70, 100, 200])
-    parser.add_argument("--robot-counts", nargs="+", type=int, default=[5, 40])
-    #parser.add_argument("--human-counts", nargs="+", type=int, default=[40, 70])
-    #parser.add_argument("--robot-counts", nargs="+", type=int, default=[40])
+    # parser.add_argument("--human-counts", nargs="+", type=int, default=[40, 70, 100, 200])
+    # parser.add_argument("--robot-counts", nargs="+", type=int, default=[5, 40])
+    parser.add_argument("--human-counts", nargs="+", type=int, default=[70, 100])
+    parser.add_argument("--robot-counts", nargs="+", type=int, default=[40])
     parser.add_argument("--manifest-root", type=Path, default=default_manifest_root())
     parser.add_argument("--output-root", type=Path, default=default_output_root())
     parser.add_argument("--python", default=sys.executable)
@@ -389,8 +389,8 @@ def build_commands(
     bc_overrides = [
         f"hydra.run.dir={hydra_scalar(bc_root)}",
         f"save_dir={hydra_scalar(bc_root)}",
-        f"project_name={hydra_scalar(bc_project_name)}",
-        f"run_name={hydra_scalar(bc_run_name)}",
+        f"wandb.project={hydra_scalar(bc_project_name)}",
+        f"wandb.run={hydra_scalar(bc_run_name)}",
         f"device={hydra_scalar(device_cfg['runtime_device'])}",
         f"pretrain_path={hydra_scalar(skill_dir)}",
         f"pretrain_ckpt={args.skill_ckpt}",

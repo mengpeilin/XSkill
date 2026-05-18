@@ -2,25 +2,23 @@ base_dev_dir: /data/peilin/xskill
 
 hydra:
   run:
-    dir: '${base_dev_dir}/experiment/pretrain_pick_mug/${now:%Y-%m-%d_%H-%M-%S}'
-
+    dir: 'TBD'
 wandb:
   project: 'TBD'
   run: 'TBD'
-
 batch_size: 20
 num_workers: 4
-pin_memory: False
-persistent_workers: False
+pin_memory: True
+persistent_workers: True
 drop_last: True
 
-resize_shape: [160, 120]
+resize_shape: [320, 240]
 repeat_shorter_dataset: True
 
 robot_dataset:
   _target_: xskill.dataset.real_world_pretrain_dataset.RealWorldEpisodeTrajDataset
   dataset_paths:
-    - '${base_dev_dir}/data/processed/pick_red_mug/robot.zarr'
+    - 'TBD'
   mask: null
   camera_view: cam1
   frame_sampler:
@@ -35,7 +33,7 @@ robot_dataset:
 human_dataset:
   _target_: xskill.dataset.real_world_pretrain_dataset.RealWorldEpisodeTrajDataset
   dataset_paths:
-    - '${base_dev_dir}/data/processed/pick_red_mug/human.zarr'
+    - 'TBD'
   mask: null
   camera_view: cam1
   frame_sampler:
@@ -50,8 +48,8 @@ human_dataset:
 augmentations: ['random_crop_110_146', 'grayscale', 'gaussian_blur', 'normalize']
 
 Trainer:
-  accelerator: gpu
-  devices: [0]
+  accelerator: null
+  devices: null
   max_epochs: 500
   enable_progress_bar: False
   log_every_n_steps: 100

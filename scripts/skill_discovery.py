@@ -20,7 +20,7 @@ def sample_shape(dataset):
 
 @hydra.main(version_base=None,
             config_path="../config/realworld",
-            config_name="skill_discovery")
+            config_name="skill_discovery_a6000")
 def pretrain(cfg: DictConfig):
     output_dir = HydraConfig.get().runtime.output_dir
     print(f"output_dir: {output_dir}")

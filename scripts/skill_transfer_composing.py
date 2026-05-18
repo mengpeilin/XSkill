@@ -18,7 +18,7 @@ from xskill.model.encoder import ResnetConv
 @hydra.main(
     version_base=None,
     config_path="../config/realworld",
-    config_name="skill_transfer_composing_pick_mug",
+    config_name="skill_transfer_composing_pick_mug_a6000",
 )
 def train_diffusion_bc(cfg: DictConfig):
     save_dir = cfg.save_dir
